@@ -24,7 +24,14 @@ router.get('/test', (req, res) => {
   res.status(200).json({
     status: 'success',
     message: 'API is working correctly!',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    database: {
+      connected: true,
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT,
+      database: process.env.DB_NAME
+    }
   });
 });
 

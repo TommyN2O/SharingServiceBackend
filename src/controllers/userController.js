@@ -7,10 +7,94 @@ const Message = require('../models/Message');
 require('dotenv').config();
 
 const userController = {
+  // Get total number of users
+  async getUserCount(req, res) {
+    try {
+      const totalUsers = await User.getTotalUsers();
+      res.status(200).json({
+        status: 'success',
+        data: {
+          total_users: totalUsers
+        }
+      });
+    } catch (error) {
+      console.error('Error getting user count:', error);
+      res.status(500).json({
+        status: 'error',
+        message: 'Internal server error'
+      });
+    }
+  },
+
   // Register new user
   async register(req, res) {
     try {
-      const { name, surname, email, password, date_of_birth } = req.body;
+      // Log the entire request body
+      console.log('Full request body:', JSON.stringify(req.body, null, 2));
+      
+      // Handle both camelCase and snake_case field names
+      const { 
+        name, 
+        surname, 
+        email, 
+        password, 
+        date_of_birth,
+        dateOfBirth // Add support for camelCase
+      } = req.body;
+
+      // Use either date_of_birth or dateOfBirth
+      const birthDate = date_of_birth || dateOfBirth;
+
+      // Log each field individually
+      console.log('Parsed fields:', {
+        name: name || 'undefined',
+        surname: surname || 'undefined',
+        email: email || 'undefined',
+        date_of_birth: birthDate || 'undefined',
+        hasPassword: !!password
+      });
+
+      // Validate required fields
+      if (!name || !surname || !email || !password || !birthDate) {
+        console.log('Missing required fields:', {
+          hasName: !!name,
+          hasSurname: !!surname,
+          hasEmail: !!email,
+          hasPassword: !!password,
+          hasDateOfBirth: !!birthDate
+        });
+        return res.status(400).json({
+          status: 'error',
+          message: 'All fields are required: name, surname, email, password, date_of_birth',
+          receivedFields: {
+            name: !!name,
+            surname: !!surname,
+            email: !!email,
+            password: !!password,
+            date_of_birth: !!birthDate
+          }
+        });
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Invalid email format'
+        });
+      }
+
+      // Validate date format
+      const date = new Date(birthDate);
+      if (isNaN(date.getTime())) {
+        console.log('Invalid date received:', birthDate);
+        return res.status(400).json({
+          status: 'error',
+          message: 'Invalid date format. Please provide a valid date.',
+          receivedDate: birthDate
+        });
+      }
 
       // Check if user already exists
       const existingUser = await User.getByEmail(email);
@@ -21,17 +105,23 @@ const userController = {
         });
       }
 
-      // Create new user
-      const user = await User.create({
+      // Create new user using createUser method
+      const user = await User.createUser({
         name,
         surname,
         email,
         password,
-        date_of_birth
+        date_of_birth: birthDate
       });
 
       // Generate token
       const token = User.generateToken(user);
+
+      console.log('User registered successfully:', {
+        userId: user.id,
+        email: user.email,
+        dateOfBirth: user.date_of_birth
+      });
 
       res.status(201).json({
         status: 'success',
@@ -50,7 +140,8 @@ const userController = {
       console.error('Error registering user:', error);
       res.status(500).json({
         status: 'error',
-        message: 'Internal server error'
+        message: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   },
@@ -234,6 +325,102 @@ const userController = {
       res.json(messages);
     } catch (error) {
       res.status(400).json({ error: error.message });
+    }
+  },
+
+  // Get all users
+  async getAllUsers(req, res) {
+    try {
+      const users = await User.getAllUsers();
+      res.status(200).json({
+        status: 'success',
+        data: {
+          users,
+          total: users.length
+        }
+      });
+    } catch (error) {
+      console.error('Error getting all users:', error);
+      res.status(500).json({
+        status: 'error',
+        message: 'Internal server error'
+      });
+    }
+  },
+
+  // Get user credentials by ID
+  async getUserCredentials(req, res) {
+    try {
+      const userId = req.params.id;
+      const user = await User.getCredentialsById(userId);
+      
+      if (!user) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'User not found'
+        });
+      }
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          user: {
+            id: user.id,
+            name: user.name,
+            surname: user.surname,
+            email: user.email,
+            password_hash: user.password_hash,
+            date_of_birth: user.date_of_birth,
+            created_at: user.created_at
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error getting user credentials:', error);
+      res.status(500).json({
+        status: 'error',
+        message: 'Internal server error'
+      });
+    }
+  },
+
+  // Get user by ID
+  async getUserById(req, res) {
+    try {
+      const userId = req.params.id;
+      const user = await User.getUserDetailsById(userId);
+      
+      if (!user) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'User not found'
+        });
+      }
+
+      // Format the response
+      const userResponse = {
+        id: user.id,
+        name: user.name,
+        surname: user.surname,
+        email: user.email,
+        date_of_birth: user.date_of_birth,
+        created_at: user.created_at,
+        is_tasker: user.is_tasker,
+        password_hash: user.password_hash // Include hashed password for verification
+      };
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          user: userResponse
+        }
+      });
+    } catch (error) {
+      console.error('Error getting user details:', error);
+      res.status(500).json({
+        status: 'error',
+        message: 'Internal server error'
+      });
     }
   }
 };

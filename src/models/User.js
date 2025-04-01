@@ -79,14 +79,36 @@ class User extends BaseModel {
     const query = `
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        name VARCHAR(255),
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        name VARCHAR(50) NOT NULL,
+        surname VARCHAR(50) NOT NULL,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        date_of_birth DATE NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
       )
     `;
     await pool.query(query);
+  }
+
+  // Get all users (without sensitive data)
+  async getAllUsers() {
+    const query = `
+      SELECT id, name, surname, email, date_of_birth, created_at
+      FROM ${this.tableName}
+      ORDER BY created_at DESC
+    `;
+    const result = await pool.query(query);
+    return result.rows;
+  }
+
+  // Get total number of users
+  async getTotalUsers() {
+    const query = `
+      SELECT COUNT(*) as total
+      FROM ${this.tableName}
+    `;
+    const result = await pool.query(query);
+    return result.rows[0].total;
   }
 
   // Get user by ID
@@ -112,17 +134,34 @@ class User extends BaseModel {
   }
 
   // Create new user
-  async create(userData) {
-    const { name, surname, email, password, date_of_birth } = userData;
-    const password_hash = await bcrypt.hash(password, 10);
+  static async create({ name, surname, email, password, date_of_birth }) {
+    try {
+      // Hash password
+      const salt = await bcrypt.genSalt(10);
+      const password_hash = await bcrypt.hash(password, salt);
 
-    const query = `
-      INSERT INTO ${this.tableName} (name, surname, email, password_hash, date_of_birth)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, name, surname, email, date_of_birth, created_at
-    `;
-    const result = await pool.query(query, [name, surname, email, password_hash, date_of_birth]);
-    return result.rows[0];
+      // Format date to YYYY-MM-DD if it's a string
+      let formattedDate = date_of_birth;
+      if (typeof date_of_birth === 'string') {
+        // If the date is in a different format, convert it
+        const date = new Date(date_of_birth);
+        if (!isNaN(date)) {
+          formattedDate = date.toISOString().split('T')[0];
+        }
+      }
+
+      console.log('Creating user with date:', formattedDate);
+
+      const result = await pool.query(
+        'INSERT INTO users (name, surname, email, password_hash, date_of_birth) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        [name, surname, email, password_hash, formattedDate]
+      );
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error creating user:', error);
+      throw error;
+    }
   }
 
   // Update user
@@ -154,6 +193,63 @@ class User extends BaseModel {
   // Verify password
   async verifyPassword(password, password_hash) {
     return bcrypt.compare(password, password_hash);
+  }
+
+  // Get user credentials by ID
+  static async getCredentialsById(id) {
+    const query = `
+      SELECT id, name, surname, email, password_hash, date_of_birth, created_at
+      FROM users
+      WHERE id = $1
+    `;
+    const result = await pool.query(query, [id]);
+    return result.rows[0];
+  }
+
+  // Get user by ID with all details
+  async getUserById(id) {
+    const query = `
+      SELECT 
+        id,
+        name,
+        surname,
+        email,
+        password_hash,
+        date_of_birth,
+        created_at,
+        CASE 
+          WHEN EXISTS (SELECT 1 FROM tasker_profiles WHERE user_id = users.id) 
+          THEN true 
+          ELSE false 
+        END as is_tasker
+      FROM users
+      WHERE id = $1
+    `;
+    const result = await pool.query(query, [id]);
+    return result.rows[0];
+  }
+
+  // Get user details by ID
+  async getUserDetailsById(id) {
+    const query = `
+      SELECT 
+        id,
+        name,
+        surname,
+        email,
+        password_hash,
+        date_of_birth,
+        created_at,
+        CASE 
+          WHEN EXISTS (SELECT 1 FROM tasker_profiles WHERE user_id = users.id) 
+          THEN true 
+          ELSE false 
+        END as is_tasker
+      FROM users
+      WHERE id = $1
+    `;
+    const result = await pool.query(query, [id]);
+    return result.rows[0];
   }
 }
 
