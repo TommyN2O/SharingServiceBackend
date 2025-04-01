@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('./config/corsConfig');
 const routes = require('./routes');
 const requestLogger = require('./middleware/requestLogger');
+const path = require('path');
+const Category = require('./models/Category');
 
 const app = express();
 
@@ -10,6 +12,22 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cors);
 app.use(requestLogger);
+
+// Serve static files from the Images directory
+app.use('/images/categories', express.static(path.join(__dirname, '../../Images/Categorys')));
+
+// Initialize database tables
+async function initializeDatabase() {
+  try {
+    await Category.createCategoryTable();
+    console.log('Category table initialized successfully');
+  } catch (error) {
+    console.error('Error initializing category table:', error);
+  }
+}
+
+// Initialize database when app starts
+initializeDatabase();
 
 // Root route
 app.get('/', (req, res) => {
@@ -21,13 +39,14 @@ app.get('/', (req, res) => {
       test: '/api/test',
       auth: '/api/auth',
       user: '/api/user',
+      category: '/api/category',
       tasker: '/api/tasker',
       tasks: '/api/tasks'
     }
   });
 });
 
-// API routes
+// Routes
 app.use('/api', routes);
 
 // Error handling middleware

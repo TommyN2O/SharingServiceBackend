@@ -40,7 +40,9 @@ async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS categories (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) UNIQUE NOT NULL,
-        image TEXT
+        image_url TEXT NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS tasker_profiles (

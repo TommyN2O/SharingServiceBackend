@@ -11,67 +11,30 @@ const userController = {
   async getUserCount(req, res) {
     try {
       const totalUsers = await User.getTotalUsers();
-      res.status(200).json({
-        status: 'success',
-        data: {
-          total_users: totalUsers
-        }
-      });
+      res.status(200).json({ total_users: totalUsers });
     } catch (error) {
       console.error('Error getting user count:', error);
-      res.status(500).json({
-        status: 'error',
-        message: 'Internal server error'
-      });
+      res.status(500).json({ error: 'Internal server error' });
     }
   },
 
   // Register new user
   async register(req, res) {
     try {
-      // Log the entire request body
-      console.log('Full request body:', JSON.stringify(req.body, null, 2));
-      
-      // Handle both camelCase and snake_case field names
-      const { 
-        name, 
-        surname, 
-        email, 
-        password, 
-        date_of_birth,
-        dateOfBirth // Add support for camelCase
-      } = req.body;
-
-      // Use either date_of_birth or dateOfBirth
-      const birthDate = date_of_birth || dateOfBirth;
-
-      // Log each field individually
-      console.log('Parsed fields:', {
-        name: name || 'undefined',
-        surname: surname || 'undefined',
-        email: email || 'undefined',
-        date_of_birth: birthDate || 'undefined',
-        hasPassword: !!password
-      });
+      const { name, surname, email, password, date_of_birth } = req.body;
+      console.log('Received registration request:', { name, surname, email, date_of_birth });
 
       // Validate required fields
-      if (!name || !surname || !email || !password || !birthDate) {
-        console.log('Missing required fields:', {
-          hasName: !!name,
-          hasSurname: !!surname,
-          hasEmail: !!email,
-          hasPassword: !!password,
-          hasDateOfBirth: !!birthDate
-        });
+      if (!name || !surname || !email || !password || !date_of_birth) {
+        console.log('Missing required fields:', { name, surname, email, date_of_birth });
         return res.status(400).json({
-          status: 'error',
-          message: 'All fields are required: name, surname, email, password, date_of_birth',
-          receivedFields: {
-            name: !!name,
-            surname: !!surname,
-            email: !!email,
-            password: !!password,
-            date_of_birth: !!birthDate
+          error: 'Missing required fields',
+          missing: {
+            name: !name,
+            surname: !surname,
+            email: !email,
+            password: !password,
+            date_of_birth: !date_of_birth
           }
         });
       }
@@ -79,19 +42,29 @@ const userController = {
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
+        console.log('Invalid email format:', email);
         return res.status(400).json({
-          status: 'error',
-          message: 'Invalid email format'
+          error: 'Invalid email format',
+          receivedEmail: email
         });
       }
 
       // Validate date format
-      const date = new Date(birthDate);
-      if (isNaN(date.getTime())) {
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(date_of_birth)) {
+        console.log('Invalid date format:', date_of_birth);
+        return res.status(400).json({
+          error: 'Invalid date format. Please use YYYY-MM-DD format.',
+          receivedDate: date_of_birth
+        });
+      }
+
+      // Parse and validate date
+      const birthDate = new Date(date_of_birth);
+      if (isNaN(birthDate.getTime())) {
         console.log('Invalid date received:', birthDate);
         return res.status(400).json({
-          status: 'error',
-          message: 'Invalid date format. Please provide a valid date.',
+          error: 'Invalid date format. Please provide a valid date.',
           receivedDate: birthDate
         });
       }
@@ -100,8 +73,7 @@ const userController = {
       const existingUser = await User.getByEmail(email);
       if (existingUser) {
         return res.status(400).json({
-          status: 'error',
-          message: 'User with this email already exists'
+          error: 'User with this email already exists'
         });
       }
 
@@ -124,23 +96,19 @@ const userController = {
       });
 
       res.status(201).json({
-        status: 'success',
-        data: {
-          user: {
-            id: user.id,
-            name: user.name,
-            surname: user.surname,
-            email: user.email,
-            date_of_birth: user.date_of_birth
-          },
-          token
-        }
+        user: {
+          id: user.id,
+          name: user.name,
+          surname: user.surname,
+          email: user.email,
+          date_of_birth: user.date_of_birth
+        },
+        token
       });
     } catch (error) {
       console.error('Error registering user:', error);
       res.status(500).json({
-        status: 'error',
-        message: 'Internal server error',
+        error: 'Internal server error',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
@@ -155,8 +123,7 @@ const userController = {
       const user = await User.getByEmail(email);
       if (!user) {
         return res.status(401).json({
-          status: 'error',
-          message: 'Invalid credentials'
+          error: 'Invalid credentials'
         });
       }
 
@@ -164,8 +131,7 @@ const userController = {
       const isValidPassword = await User.verifyPassword(password, user.password_hash);
       if (!isValidPassword) {
         return res.status(401).json({
-          status: 'error',
-          message: 'Invalid credentials'
+          error: 'Invalid credentials'
         });
       }
 
@@ -173,23 +139,19 @@ const userController = {
       const token = User.generateToken(user);
 
       res.status(200).json({
-        status: 'success',
-        data: {
-          user: {
-            id: user.id,
-            name: user.name,
-            surname: user.surname,
-            email: user.email,
-            date_of_birth: user.date_of_birth
-          },
-          token
-        }
+        user: {
+          id: user.id,
+          name: user.name,
+          surname: user.surname,
+          email: user.email,
+          date_of_birth: user.date_of_birth
+        },
+        token
       });
     } catch (error) {
       console.error('Error logging in:', error);
       res.status(500).json({
-        status: 'error',
-        message: 'Internal server error'
+        error: 'Internal server error'
       });
     }
   },
@@ -212,29 +174,24 @@ const userController = {
       
       if (!user) {
         return res.status(404).json({
-          status: 'error',
-          message: 'User not found'
+          error: 'User not found'
         });
       }
 
       res.status(200).json({
-        status: 'success',
-        data: {
-          user: {
-            id: user.id,
-            name: user.name,
-            surname: user.surname,
-            email: user.email,
-            date_of_birth: user.date_of_birth,
-            created_at: user.created_at
-          }
+        user: {
+          id: user.id,
+          name: user.name,
+          surname: user.surname,
+          email: user.email,
+          date_of_birth: user.date_of_birth,
+          created_at: user.created_at
         }
       });
     } catch (error) {
       console.error('Error getting user profile:', error);
       res.status(500).json({
-        status: 'error',
-        message: 'Internal server error'
+        error: 'Internal server error'
       });
     }
   },
@@ -252,23 +209,19 @@ const userController = {
       });
 
       res.status(200).json({
-        status: 'success',
-        data: {
-          user: {
-            id: updatedUser.id,
-            name: updatedUser.name,
-            surname: updatedUser.surname,
-            email: updatedUser.email,
-            date_of_birth: updatedUser.date_of_birth,
-            created_at: updatedUser.created_at
-          }
+        user: {
+          id: updatedUser.id,
+          name: updatedUser.name,
+          surname: updatedUser.surname,
+          email: updatedUser.email,
+          date_of_birth: updatedUser.date_of_birth,
+          created_at: updatedUser.created_at
         }
       });
     } catch (error) {
       console.error('Error updating user profile:', error);
       res.status(500).json({
-        status: 'error',
-        message: 'Internal server error'
+        error: 'Internal server error'
       });
     }
   },
@@ -333,17 +286,13 @@ const userController = {
     try {
       const users = await User.getAllUsers();
       res.status(200).json({
-        status: 'success',
-        data: {
-          users,
-          total: users.length
-        }
+        users,
+        total: users.length
       });
     } catch (error) {
       console.error('Error getting all users:', error);
       res.status(500).json({
-        status: 'error',
-        message: 'Internal server error'
+        error: 'Internal server error'
       });
     }
   },
@@ -356,30 +305,25 @@ const userController = {
       
       if (!user) {
         return res.status(404).json({
-          status: 'error',
-          message: 'User not found'
+          error: 'User not found'
         });
       }
 
       res.status(200).json({
-        status: 'success',
-        data: {
-          user: {
-            id: user.id,
-            name: user.name,
-            surname: user.surname,
-            email: user.email,
-            password_hash: user.password_hash,
-            date_of_birth: user.date_of_birth,
-            created_at: user.created_at
-          }
+        user: {
+          id: user.id,
+          name: user.name,
+          surname: user.surname,
+          email: user.email,
+          password_hash: user.password_hash,
+          date_of_birth: user.date_of_birth,
+          created_at: user.created_at
         }
       });
     } catch (error) {
       console.error('Error getting user credentials:', error);
       res.status(500).json({
-        status: 'error',
-        message: 'Internal server error'
+        error: 'Internal server error'
       });
     }
   },
@@ -392,34 +336,26 @@ const userController = {
       
       if (!user) {
         return res.status(404).json({
-          status: 'error',
-          message: 'User not found'
+          error: 'User not found'
         });
       }
 
-      // Format the response
-      const userResponse = {
-        id: user.id,
-        name: user.name,
-        surname: user.surname,
-        email: user.email,
-        date_of_birth: user.date_of_birth,
-        created_at: user.created_at,
-        is_tasker: user.is_tasker,
-        password_hash: user.password_hash // Include hashed password for verification
-      };
-
       res.status(200).json({
-        status: 'success',
-        data: {
-          user: userResponse
+        user: {
+          id: user.id,
+          name: user.name,
+          surname: user.surname,
+          email: user.email,
+          date_of_birth: user.date_of_birth,
+          created_at: user.created_at,
+          is_tasker: user.is_tasker,
+          password_hash: user.password_hash
         }
       });
     } catch (error) {
       console.error('Error getting user details:', error);
       res.status(500).json({
-        status: 'error',
-        message: 'Internal server error'
+        error: 'Internal server error'
       });
     }
   }
