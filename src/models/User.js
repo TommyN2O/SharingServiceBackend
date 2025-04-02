@@ -29,9 +29,18 @@ class User extends BaseModel {
 
   async getUserWithTaskerProfile(userId) {
     const query = `
-      SELECT u.*, 
-             CASE WHEN tp.id IS NOT NULL THEN true ELSE false END as is_tasker,
-             tp.*
+      SELECT 
+        u.id,
+        u.name,
+        u.surname,
+        u.email,
+        u.date_of_birth,
+        u.created_at,
+        CASE WHEN tp.id IS NOT NULL THEN true ELSE false END as is_tasker,
+        tp.id as tasker_profile_id,
+        tp.profile_photo,
+        tp.description as tasker_description,
+        tp.hourly_rate
       FROM users u
       LEFT JOIN tasker_profiles tp ON u.id = tp.user_id
       WHERE u.id = $1
@@ -64,17 +73,29 @@ class User extends BaseModel {
   }
 
   async getUserDashboard(userId) {
-    const query = `
-      SELECT 
-        (SELECT COUNT(*) FROM customer_requests WHERE user_id = $1) as total_requests,
-        (SELECT COUNT(*) FROM planned_tasks WHERE customer_id = $1 AND status = 'completed') as completed_tasks,
-        (SELECT COUNT(*) FROM planned_tasks WHERE tasker_id = $1 AND status = 'completed') as completed_tasker_tasks,
-        (SELECT AVG(rating) FROM reviews WHERE tasker_id = $1) as average_rating
-    `;
-    const result = await pool.query(query, [userId]);
-    return result.rows[0];
+    try {
+      const query = `
+        SELECT 
+          COALESCE((SELECT COUNT(*) FROM customer_requests WHERE user_id = $1), 0) as total_requests,
+          COALESCE((SELECT COUNT(*) FROM planned_tasks WHERE customer_id = $1 AND status = 'completed'), 0) as completed_tasks,
+          COALESCE((SELECT COUNT(*) FROM planned_tasks WHERE tasker_id = $1 AND status = 'completed'), 0) as completed_tasker_tasks,
+          COALESCE((SELECT AVG(rating) FROM reviews WHERE tasker_id = $1), 0) as average_rating
+      `;
+      const result = await pool.query(query, [userId]);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error getting user dashboard:', error);
+      // Return default values if there's an error
+      return {
+        total_requests: 0,
+        completed_tasks: 0,
+        completed_tasker_tasks: 0,
+        average_rating: 0
+      };
+    }
   }
 
+  // Create user table
   async createUserTable() {
     const query = `
       CREATE TABLE IF NOT EXISTS users (
@@ -84,6 +105,7 @@ class User extends BaseModel {
         email VARCHAR(100) UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         date_of_birth DATE NOT NULL,
+        is_tasker BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW()
       )
     `;
@@ -165,15 +187,25 @@ class User extends BaseModel {
   }
 
   // Update user
-  async update(id, updates) {
-    const { name, surname, date_of_birth } = updates;
+  async update(id, data) {
+    const allowedFields = ['name', 'surname', 'email', 'date_of_birth', 'is_tasker'];
+    const updates = Object.keys(data)
+      .filter(key => allowedFields.includes(key))
+      .map(key => `${key} = $${allowedFields.indexOf(key) + 2}`)
+      .join(', ');
+
+    if (!updates) {
+      throw new Error('No valid fields to update');
+    }
+
+    const values = [id, ...allowedFields.map(field => data[field])];
     const query = `
-      UPDATE ${this.tableName}
-      SET name = $1, surname = $2, date_of_birth = $3
-      WHERE id = $4
-      RETURNING id, name, surname, email, date_of_birth, created_at
+      UPDATE users
+      SET ${updates}
+      WHERE id = $1
+      RETURNING *
     `;
-    const result = await pool.query(query, [name, surname, date_of_birth, id]);
+    const result = await pool.query(query, values);
     return result.rows[0];
   }
 
@@ -249,6 +281,18 @@ class User extends BaseModel {
       WHERE id = $1
     `;
     const result = await pool.query(query, [id]);
+    return result.rows[0];
+  }
+
+  // Update user to become a tasker
+  async becomeTasker(userId) {
+    const query = `
+      UPDATE users
+      SET is_tasker = TRUE
+      WHERE id = $1
+      RETURNING *
+    `;
+    const result = await pool.query(query, [userId]);
     return result.rows[0];
   }
 }

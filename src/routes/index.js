@@ -3,6 +3,7 @@ const router = express.Router();
 const authRoutes = require('./authRoutes');
 const userRoutes = require('./userRoutes');
 const categoryRoutes = require('./categoryRoutes');
+const taskerRoutes = require('./taskerRoutes');
 
 // Root route
 router.get('/', (req, res) => {
@@ -13,7 +14,7 @@ router.get('/', (req, res) => {
     endpoints: {
       test: '/api/test',
       auth: '/api/auth',
-      user: '/api/user',
+      users: '/api/users',
       category: '/api/category',
       tasker: '/api/tasker',
       tasks: '/api/tasks'
@@ -41,9 +42,12 @@ router.get('/test', (req, res) => {
 router.use('/auth', authRoutes);
 
 // User routes
-router.use('/user', userRoutes);
+router.use('/users', userRoutes);
 
 // Category routes
 router.use('/category', categoryRoutes);
+
+// Tasker routes
+router.use('/tasker', taskerRoutes);
 
 module.exports = router; 

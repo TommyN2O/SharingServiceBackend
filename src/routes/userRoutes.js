@@ -1,17 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
-const authMiddleware = require('../middleware/authMiddleware');
+const auth = require('../middleware/auth');
 
 // Public routes (no auth required)
 router.post('/register', userController.register);
 router.post('/login', userController.login);
 router.get('/count', userController.getUserCount);
 router.get('/all', userController.getAllUsers);
-router.get('/:id', userController.getUserById);
 
 // Protected routes (auth required)
-router.use(authMiddleware);
+router.use(auth);
 
 // Profile routes
 router.get('/profile', userController.getProfile);
@@ -20,9 +19,18 @@ router.put('/profile', userController.updateProfile);
 // Dashboard and other routes
 router.get('/dashboard', userController.getDashboard);
 router.get('/customer-requests', userController.getCustomerRequests);
-router.get('/saved-taskers', userController.getSavedTaskers);
-router.post('/saved-taskers', userController.saveTasker);
 router.get('/messages', userController.getMessages);
 router.get('/messages/:userId', userController.getConversation);
+
+// Saved taskers routes
+router.get('/saved-taskers', userController.getSavedTaskers);
+router.post('/save-tasker/:taskerId', userController.saveTasker);
+router.delete('/saved-tasker/:taskerId', userController.removeSavedTasker);
+
+// Complete user data route
+router.get('/complete/:id', userController.getUserCompleteData);
+
+// Get user by ID (must be last to avoid conflicts)
+router.get('/:id', userController.getUserById);
 
 module.exports = router; 

@@ -2,8 +2,112 @@ const TaskerProfile = require('../models/TaskerProfile');
 const CustomerRequest = require('../models/CustomerRequest');
 const PlannedTask = require('../models/PlannedTask');
 const Message = require('../models/Message');
+const User = require('../models/User');
+const pool = require('../config/database');
+const path = require('path');
 
 const taskerController = {
+  // Get tasker profile
+  async getProfile(req, res) {
+    try {
+      // Get tasker profile with all details
+      const profile = await TaskerProfile.getCompleteProfile(req.user.id);
+      
+      if (!profile) {
+        return res.status(404).json({ error: 'Tasker profile not found' });
+      }
+
+      res.json(profile);
+    } catch (error) {
+      console.error('Error getting tasker profile:', error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  // Create tasker profile
+  async createProfile(req, res) {
+    try {
+      const {
+        profile_photo,
+        description,
+        hourly_rate,
+        categories,
+        cities,
+        availability
+      } = req.body;
+
+      // Validate required fields
+      if (!description || !hourly_rate || !categories || !cities || !availability) {
+        return res.status(400).json({
+          error: 'Missing required fields',
+          received: {
+            description: !!description,
+            hourly_rate: !!hourly_rate,
+            categories: !!categories,
+            cities: !!cities,
+            availability: !!availability
+          }
+        });
+      }
+
+      // Handle profile photo
+      let finalProfilePhoto;
+      if (profile_photo) {
+        // If a custom photo is provided, use it
+        finalProfilePhoto = profile_photo;
+      } else {
+        // Use default profile photo
+        finalProfilePhoto = 'images/profiles/default.jpg';
+      }
+
+      // Start a transaction
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Update user to become a tasker
+        await User.becomeTasker(req.user.id);
+
+        // Create tasker profile
+        const taskerProfile = await TaskerProfile.create({
+          user_id: req.user.id,
+          profile_photo: finalProfilePhoto,
+          description,
+          hourly_rate
+        });
+
+        // Add categories
+        for (const categoryId of categories) {
+          await TaskerProfile.addCategory(taskerProfile.id, categoryId);
+        }
+
+        // Add cities
+        for (const city of cities) {
+          await TaskerProfile.addCity(taskerProfile.id, city);
+        }
+
+        // Add availability
+        for (const slot of availability) {
+          await TaskerProfile.addAvailability(taskerProfile.id, slot.date, slot.time);
+        }
+
+        await client.query('COMMIT');
+
+        // Get complete profile with all details
+        const completeProfile = await TaskerProfile.getCompleteProfile(req.user.id);
+        res.status(201).json(completeProfile);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Error creating tasker profile:', error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+
   // Create or update tasker profile
   async updateProfile(req, res) {
     try {
@@ -139,6 +243,54 @@ const taskerController = {
       res.json(task);
     } catch (error) {
       res.status(400).json({ error: error.message });
+    }
+  },
+
+  // Delete tasker profile
+  async deleteProfile(req, res) {
+    try {
+      const userId = req.user.id;
+      
+      // Check if user has a tasker profile
+      const profile = await TaskerProfile.findByUserId(userId);
+      if (!profile) {
+        return res.status(404).json({ error: 'Tasker profile not found' });
+      }
+
+      // Start a transaction
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Delete gallery images
+        await client.query('DELETE FROM tasker_gallery WHERE tasker_id = $1', [userId]);
+
+        // Delete availability
+        await client.query('DELETE FROM tasker_availability WHERE tasker_id = $1', [userId]);
+
+        // Delete cities
+        await client.query('DELETE FROM tasker_cities WHERE tasker_id = $1', [userId]);
+
+        // Delete categories
+        await client.query('DELETE FROM tasker_categories WHERE tasker_id = $1', [userId]);
+
+        // Delete the profile
+        await client.query('DELETE FROM tasker_profiles WHERE user_id = $1', [userId]);
+
+        // Update user's is_tasker status
+        await client.query('UPDATE users SET is_tasker = false WHERE id = $1', [userId]);
+
+        await client.query('COMMIT');
+        res.status(200).json({ message: 'Tasker profile deleted successfully' });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Error deleting tasker profile:', error);
+      res.status(500).json({ error: 'Failed to delete tasker profile' });
     }
   }
 };

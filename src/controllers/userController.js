@@ -4,6 +4,7 @@ const User = require('../models/User');
 const TaskerProfile = require('../models/TaskerProfile');
 const CustomerRequest = require('../models/CustomerRequest');
 const Message = require('../models/Message');
+const pool = require('../config/database');
 require('dotenv').config();
 
 const userController = {
@@ -357,6 +358,79 @@ const userController = {
       res.status(500).json({
         error: 'Internal server error'
       });
+    }
+  },
+
+  // Get complete user data
+  async getUserCompleteData(req, res) {
+    try {
+      const userId = req.params.id;
+      console.log('Getting complete data for user:', userId);
+      
+      // Get user with tasker profile
+      const user = await User.getUserWithTaskerProfile(userId);
+      console.log('User data:', user);
+      
+      if (!user) {
+        console.log('User not found');
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // If user is a tasker, get their complete profile
+      let taskerProfile = null;
+      if (user.is_tasker) {
+        console.log('User is a tasker, getting profile');
+        taskerProfile = await TaskerProfile.getCompleteProfile(userId);
+        console.log('Tasker profile:', taskerProfile);
+      }
+
+      // Get user's dashboard data
+      console.log('Getting dashboard data');
+      const dashboard = await User.getUserDashboard(userId);
+      console.log('Dashboard data:', dashboard);
+
+      // Combine all data
+      const completeData = {
+        user: {
+          id: user.id,
+          name: user.name,
+          surname: user.surname,
+          email: user.email,
+          date_of_birth: user.date_of_birth,
+          is_tasker: user.is_tasker,
+          created_at: user.created_at
+        },
+        tasker_profile: user.is_tasker ? {
+          id: user.tasker_profile_id,
+          profile_photo: user.profile_photo,
+          description: user.tasker_description,
+          hourly_rate: user.hourly_rate,
+          categories: taskerProfile?.categories || [],
+          cities: taskerProfile?.cities || [],
+          availability: taskerProfile?.availability || []
+        } : null,
+        dashboard: dashboard
+      };
+
+      console.log('Sending complete data:', completeData);
+      res.json(completeData);
+    } catch (error) {
+      console.error('Error getting user complete data:', error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  // Remove saved tasker
+  async removeSavedTasker(req, res) {
+    try {
+      const { taskerId } = req.params;
+      await pool.query(
+        'DELETE FROM saved_taskers WHERE customer_id = $1 AND tasker_id = $2',
+        [req.user.id, taskerId]
+      );
+      res.status(200).json({ message: 'Tasker removed from saved list' });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
     }
   }
 };

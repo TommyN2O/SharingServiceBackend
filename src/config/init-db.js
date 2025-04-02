@@ -60,6 +60,14 @@ async function initializeDatabase() {
         rating DECIMAL(3,2) DEFAULT 0 CHECK (rating BETWEEN 0 AND 5)
       );
 
+      CREATE TABLE IF NOT EXISTS tasker_gallery (
+        id SERIAL PRIMARY KEY,
+        tasker_id INT REFERENCES tasker_profiles(id) ON DELETE CASCADE,
+        image_path TEXT NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS customer_requests (
         id SERIAL PRIMARY KEY,
         user_id INT REFERENCES users(id) ON DELETE CASCADE,

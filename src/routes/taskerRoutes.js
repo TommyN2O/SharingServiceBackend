@@ -7,7 +7,10 @@ const auth = require('../middleware/auth');
 router.use(auth);
 
 // Tasker profile management
+router.get('/profile', taskerController.getProfile);
+router.post('/profile', taskerController.createProfile);
 router.put('/profile', taskerController.updateProfile);
+router.delete('/profile', taskerController.deleteProfile);
 
 // Task management
 router.get('/available-tasks', taskerController.getAvailableTasks);
