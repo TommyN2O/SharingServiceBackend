@@ -19,23 +19,35 @@ class TaskerProfile extends BaseModel {
   }
 
   // Add category to tasker profile
-  async addCategory(tasker_id, category_id) {
+  async addCategory(tasker_id, category) {
+    // Handle both object format {id, name} and direct ID
+    const categoryId = typeof category === 'object' ? category.id : category;
+    
     const query = `
       INSERT INTO tasker_categories (tasker_id, category_id)
       VALUES ($1, $2)
       ON CONFLICT (tasker_id, category_id) DO NOTHING
     `;
-    await pool.query(query, [tasker_id, category_id]);
+    await pool.query(query, [tasker_id, categoryId]);
   }
 
   // Add city to tasker profile
   async addCity(tasker_id, city) {
-    const query = `
-      INSERT INTO tasker_cities (tasker_id, city)
-      VALUES ($1, $2)
-      ON CONFLICT (tasker_id, city) DO NOTHING
-    `;
-    await pool.query(query, [tasker_id, city]);
+    try {
+      // Get the city ID from the object
+      const cityId = typeof city === 'object' ? city.id : city;
+      
+      // Link the tasker to the city
+      const query = `
+        INSERT INTO tasker_cities (tasker_id, city_id)
+        VALUES ($1, $2)
+        ON CONFLICT (tasker_id, city_id) DO NOTHING
+      `;
+      await pool.query(query, [tasker_id, cityId]);
+    } catch (error) {
+      console.error('Error in addCity:', error);
+      throw error;
+    }
   }
 
   // Add availability slot
@@ -65,7 +77,7 @@ class TaskerProfile extends BaseModel {
         u.surname,
         u.email,
         COALESCE(array_remove(array_agg(DISTINCT jsonb_build_object('id', tc.category_id, 'name', c.name)), NULL), '{}') as categories,
-        COALESCE(array_remove(array_agg(DISTINCT tci.city), NULL), '{}') as cities,
+        COALESCE(array_remove(array_agg(DISTINCT jsonb_build_object('id', ci.id, 'name', ci.name)), NULL), '{}') as cities,
         COALESCE(array_remove(array_agg(DISTINCT ta.date || ' ' || ta.time_slot), NULL), '{}') as availability,
         COALESCE(array_remove(array_agg(DISTINCT tg.image_url), NULL), '{}') as gallery
       FROM tasker_profiles tp
@@ -73,6 +85,7 @@ class TaskerProfile extends BaseModel {
       LEFT JOIN tasker_categories tc ON tp.id = tc.tasker_id
       LEFT JOIN categories c ON tc.category_id = c.id
       LEFT JOIN tasker_cities tci ON tp.id = tci.tasker_id
+      LEFT JOIN cities ci ON tci.city_id = ci.id
       LEFT JOIN tasker_availability ta ON tp.id = ta.tasker_id
       LEFT JOIN tasker_gallery tg ON tp.id = tg.tasker_id
       LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id

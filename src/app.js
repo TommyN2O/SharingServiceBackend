@@ -6,6 +6,7 @@ const path = require('path');
 const Category = require('./models/Category');
 const TaskerProfile = require('./models/TaskerProfile');
 const pool = require('./config/database');
+const City = require('./models/City');
 
 const app = express();
 
@@ -22,20 +23,54 @@ app.use('/images/profiles', express.static(path.join(__dirname, '../../Images/pr
 // Initialize database tables
 async function initializeDatabase() {
   try {
-    // Create users table first
+    // Create users table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(50) NOT NULL,
-        surname VARCHAR(50) NOT NULL,
-        email VARCHAR(100) UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        date_of_birth DATE NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        surname VARCHAR(100) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        date_of_birth DATE,
         is_tasker BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT NOW()
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    console.log('Users table initialized successfully');
+    console.log('Users table initialized');
+
+    // Create cities table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cities (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('Cities table initialized');
+
+    // Create tasker_profiles table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tasker_profiles (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        profile_photo VARCHAR(255),
+        description TEXT,
+        hourly_rate DECIMAL(10,2),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('Tasker profiles table initialized');
+
+    // Create tasker_cities table
+    await pool.query(`
+      DROP TABLE IF EXISTS tasker_cities CASCADE;
+      CREATE TABLE tasker_cities (
+        tasker_id INTEGER REFERENCES tasker_profiles(id) ON DELETE CASCADE,
+        city_id INTEGER REFERENCES cities(id) ON DELETE CASCADE,
+        PRIMARY KEY (tasker_id, city_id)
+      )
+    `);
+    console.log('Tasker cities table initialized');
 
     // Create customer_requests table
     await pool.query(`
@@ -50,19 +85,6 @@ async function initializeDatabase() {
     `);
     console.log('Customer requests table initialized successfully');
 
-    // Create tasker_profiles table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS tasker_profiles (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES users(id),
-        profile_photo TEXT,
-        description TEXT,
-        hourly_rate DECIMAL(10,2),
-        created_at TIMESTAMP DEFAULT NOW()
-      )
-    `);
-    console.log('Tasker profiles table initialized successfully');
-
     // Create tasker_categories table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS tasker_categories (
@@ -72,16 +94,6 @@ async function initializeDatabase() {
       )
     `);
     console.log('Tasker categories table initialized successfully');
-
-    // Create tasker_cities table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS tasker_cities (
-        tasker_id INTEGER REFERENCES tasker_profiles(id),
-        city TEXT,
-        PRIMARY KEY (tasker_id, city)
-      )
-    `);
-    console.log('Tasker cities table initialized successfully');
 
     // Create tasker_availability table
     await pool.query(`
@@ -174,6 +186,33 @@ app.get('/', (req, res) => {
 
 // Routes
 app.use('/api', routes);
+app.use('/api/cities', require('./routes/cityRoutes'));
+
+// Initialize Lithuanian cities
+app.get('/api/init-cities', async (req, res) => {
+  try {
+    console.log('Starting cities initialization...');
+    await City.initializeLithuanianCities();
+    console.log('Cities initialization completed');
+    res.json({ message: 'Lithuanian cities initialized successfully' });
+  } catch (error) {
+    console.error('Error initializing cities:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all cities
+app.get('/api/cities', async (req, res) => {
+  try {
+    console.log('Fetching all cities...');
+    const cities = await City.getAll();
+    console.log('Cities fetched:', cities);
+    res.json(cities);
+  } catch (error) {
+    console.error('Error getting cities:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
