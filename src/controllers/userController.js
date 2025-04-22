@@ -5,6 +5,7 @@ const TaskerProfile = require('../models/TaskerProfile');
 const CustomerRequest = require('../models/CustomerRequest');
 const Message = require('../models/Message');
 const pool = require('../config/database');
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/jwt');
 require('dotenv').config();
 
 const userController = {
@@ -22,12 +23,15 @@ const userController = {
   // Register new user
   async register(req, res) {
     try {
-      const { name, surname, email, password, date_of_birth } = req.body;
-      console.log('Received registration request:', { name, surname, email, date_of_birth });
+      const { name, surname, email, password, date_of_birth, dateOfBirth, birthDate } = req.body;
+      // Try all possible date field names
+      const finalBirthDate = date_of_birth || dateOfBirth || birthDate;
+      
+      console.log('Received registration request:', { name, surname, email, birthDate: finalBirthDate });
 
       // Validate required fields
-      if (!name || !surname || !email || !password || !date_of_birth) {
-        console.log('Missing required fields:', { name, surname, email, date_of_birth });
+      if (!name || !surname || !email || !password || !finalBirthDate) {
+        console.log('Missing required fields:', { name, surname, email, birthDate: finalBirthDate });
         return res.status(400).json({
           error: 'Missing required fields',
           missing: {
@@ -35,45 +39,16 @@ const userController = {
             surname: !surname,
             email: !email,
             password: !password,
-            date_of_birth: !date_of_birth
+            birthDate: !finalBirthDate
           }
-        });
-      }
-
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        console.log('Invalid email format:', email);
-        return res.status(400).json({
-          error: 'Invalid email format',
-          receivedEmail: email
-        });
-      }
-
-      // Validate date format
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!dateRegex.test(date_of_birth)) {
-        console.log('Invalid date format:', date_of_birth);
-        return res.status(400).json({
-          error: 'Invalid date format. Please use YYYY-MM-DD format.',
-          receivedDate: date_of_birth
-        });
-      }
-
-      // Parse and validate date
-      const birthDate = new Date(date_of_birth);
-      if (isNaN(birthDate.getTime())) {
-        console.log('Invalid date received:', birthDate);
-        return res.status(400).json({
-          error: 'Invalid date format. Please provide a valid date.',
-          receivedDate: birthDate
         });
       }
 
       // Check if user already exists
       const existingUser = await User.getByEmail(email);
       if (existingUser) {
-        return res.status(400).json({
+        console.log('User already exists:', email);
+        return res.status(409).json({
           error: 'User with this email already exists'
         });
       }
@@ -84,11 +59,11 @@ const userController = {
         surname,
         email,
         password,
-        date_of_birth: birthDate
+        date_of_birth: finalBirthDate
       });
 
-      // Generate token
-      const token = User.generateToken(user);
+      // Use createToken method instead of generating new token
+      const token = await User.createToken(user.id);
 
       console.log('User registered successfully:', {
         userId: user.id,
@@ -108,6 +83,14 @@ const userController = {
       });
     } catch (error) {
       console.error('Error registering user:', error);
+      
+      // Handle specific database errors
+      if (error.code === '23505' && error.constraint === 'users_email_key') {
+        return res.status(409).json({
+          error: 'User with this email already exists'
+        });
+      }
+
       res.status(500).json({
         error: 'Internal server error',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -120,7 +103,7 @@ const userController = {
     try {
       const { email, password } = req.body;
 
-      // Get user by email
+      // Get user by email with token information
       const user = await User.getByEmail(email);
       if (!user) {
         return res.status(401).json({
@@ -136,8 +119,12 @@ const userController = {
         });
       }
 
-      // Generate token
-      const token = User.generateToken(user);
+      // Get token (will reuse existing valid token or create new one)
+      const token = await User.createToken(user.id);
+      console.log('Login successful - Token:', token ? 'provided' : 'not provided');
+
+      // Check if user is a tasker
+      const taskerProfile = await TaskerProfile.findByUserId(user.id);
 
       res.status(200).json({
         user: {
@@ -145,14 +132,16 @@ const userController = {
           name: user.name,
           surname: user.surname,
           email: user.email,
-          date_of_birth: user.date_of_birth
+          date_of_birth: user.date_of_birth,
+          isTasker: !!taskerProfile
         },
         token
       });
     } catch (error) {
       console.error('Error logging in:', error);
       res.status(500).json({
-        error: 'Internal server error'
+        error: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   },

@@ -27,6 +27,9 @@ const taskerController = {
   // Create tasker profile
   async createProfile(req, res) {
     try {
+      console.log('Creating tasker profile for user:', req.user.id);
+      console.log('Request body:', req.body);
+
       const {
         profile_photo,
         description,
@@ -38,6 +41,13 @@ const taskerController = {
 
       // Validate required fields
       if (!description || !hourly_rate || !categories || !cities || !availability) {
+        console.log('Missing required fields:', {
+          description: !!description,
+          hourly_rate: !!hourly_rate,
+          categories: !!categories,
+          cities: !!cities,
+          availability: !!availability
+        });
         return res.status(400).json({
           error: 'Missing required fields',
           received: {
@@ -50,89 +60,126 @@ const taskerController = {
         });
       }
 
-      // Handle profile photo
-      let finalProfilePhoto;
-      if (profile_photo) {
-        // If a custom photo is provided, use it
-        finalProfilePhoto = profile_photo;
-      } else {
-        // Use default profile photo
-        finalProfilePhoto = 'images/profiles/default.jpg';
+      // Validate availability format
+      if (!Array.isArray(availability) || !availability.every(slot => slot.date && slot.time)) {
+        return res.status(400).json({
+          error: 'Invalid availability format. Each slot must have date and time.',
+          received: availability
+        });
       }
+
+      // Handle profile photo
+      let finalProfilePhoto = profile_photo || 'images/profiles/default.jpg';
 
       // Start a transaction
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        console.log('Transaction started');
 
         // Update user to become a tasker
         await User.becomeTasker(req.user.id);
+        console.log('User updated to tasker');
 
         // Create tasker profile
         const taskerProfile = await TaskerProfile.create({
           user_id: req.user.id,
           profile_photo: finalProfilePhoto,
           description,
-          hourly_rate
+          hourly_rate: parseFloat(hourly_rate)
         });
+        console.log('Tasker profile created:', taskerProfile);
 
         // Add categories
-        for (const categoryId of categories) {
-          await TaskerProfile.addCategory(taskerProfile.id, categoryId);
+        if (Array.isArray(categories)) {
+          for (const categoryId of categories) {
+            await TaskerProfile.addCategory(taskerProfile.id, categoryId);
+          }
+          console.log('Categories added');
         }
 
         // Add cities
-        for (const city of cities) {
-          await TaskerProfile.addCity(taskerProfile.id, city);
+        if (Array.isArray(cities)) {
+          for (const city of cities) {
+            await TaskerProfile.addCity(taskerProfile.id, city);
+          }
+          console.log('Cities added');
         }
 
         // Add availability
-        for (const slot of availability) {
-          await TaskerProfile.addAvailability(taskerProfile.id, slot.date, slot.time);
+        if (Array.isArray(availability)) {
+          for (const slot of availability) {
+            if (slot.date && slot.time) {
+              // Ensure date is in YYYY-MM-DD format
+              const formattedDate = new Date(slot.date).toISOString().split('T')[0];
+              await TaskerProfile.addAvailability(taskerProfile.id, formattedDate, slot.time);
+            }
+          }
+          console.log('Availability added');
         }
 
         await client.query('COMMIT');
+        console.log('Transaction committed');
 
         // Get complete profile with all details
         const completeProfile = await TaskerProfile.getCompleteProfile(req.user.id);
         res.status(201).json(completeProfile);
       } catch (error) {
         await client.query('ROLLBACK');
+        console.error('Error in transaction, rolling back:', error);
         throw error;
       } finally {
         client.release();
       }
     } catch (error) {
       console.error('Error creating tasker profile:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ 
+        error: 'Failed to create tasker profile',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   },
 
-  // Create or update tasker profile
+  // Update tasker profile
   async updateProfile(req, res) {
     try {
+      console.log('Updating tasker profile for user:', req.user.id);
+      console.log('Request body:', req.body);
+
       const {
-        bio,
+        profile_photo,
+        description,
         hourly_rate,
-        skills,
-        availability,
-        location,
-        verification_documents
+        categories,
+        cities,
+        availability
       } = req.body;
 
-      const taskerProfile = await TaskerProfile.createOrUpdate({
-        user_id: req.user.id,
-        bio,
+      // Check if user has a tasker profile
+      const existingProfile = await TaskerProfile.findByUserId(req.user.id);
+      if (!existingProfile) {
+        return res.status(404).json({
+          error: 'Tasker profile not found'
+        });
+      }
+
+      // Update the profile
+      const updatedProfile = await TaskerProfile.update(req.user.id, {
+        profile_photo,
+        description,
         hourly_rate,
-        skills,
-        availability,
-        location,
-        verification_documents
+        categories,
+        cities,
+        availability
       });
 
-      res.json(taskerProfile);
+      res.json(updatedProfile);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      console.error('Error updating tasker profile:', error);
+      res.status(500).json({ 
+        error: 'Failed to update tasker profile',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   },
 
@@ -291,6 +338,37 @@ const taskerController = {
     } catch (error) {
       console.error('Error deleting tasker profile:', error);
       res.status(500).json({ error: 'Failed to delete tasker profile' });
+    }
+  },
+
+  // Get all tasker profiles
+  async getAllProfiles(req, res) {
+    try {
+      console.log('Getting all tasker profiles');
+      const profiles = await TaskerProfile.getAllProfiles();
+      res.json(profiles);
+    } catch (error) {
+      console.error('Error getting all tasker profiles:', error);
+      res.status(500).json({ error: 'Failed to get tasker profiles' });
+    }
+  },
+
+  // Get tasker profile by ID
+  async getProfileById(req, res) {
+    try {
+      const { id } = req.params;
+      console.log('Getting tasker profile by ID:', id);
+      
+      const profile = await TaskerProfile.getProfileById(id);
+      
+      if (!profile) {
+        return res.status(404).json({ error: 'Tasker profile not found' });
+      }
+      
+      res.json(profile);
+    } catch (error) {
+      console.error('Error getting tasker profile by ID:', error);
+      res.status(500).json({ error: 'Failed to get tasker profile' });
     }
   }
 };

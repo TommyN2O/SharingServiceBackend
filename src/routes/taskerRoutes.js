@@ -11,6 +11,9 @@ router.get('/profile', taskerController.getProfile);
 router.post('/profile', taskerController.createProfile);
 router.put('/profile', taskerController.updateProfile);
 router.delete('/profile', taskerController.deleteProfile);
+router.get('/profile/:userId', taskerController.getProfile);
+router.get('/profiles', taskerController.getAllProfiles);
+router.get('/profiles/:id', taskerController.getProfileById);
 
 // Task management
 router.get('/available-tasks', taskerController.getAvailableTasks);

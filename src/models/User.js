@@ -2,11 +2,23 @@ const BaseModel = require('./BaseModel');
 const pool = require('../config/database');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/jwt');
 require('dotenv').config();
 
 class User extends BaseModel {
   constructor() {
     super('users');
+    this.initialize();
+  }
+
+  async initialize() {
+    try {
+      await this.createUserTable();
+      await this.addCurrentTokenColumn();
+      console.log('User model initialized successfully');
+    } catch (error) {
+      console.error('Error initializing User model:', error);
+    }
   }
 
   // Custom methods specific to User model
@@ -17,14 +29,28 @@ class User extends BaseModel {
   }
 
   async createUser(userData) {
-    const { password, ...rest } = userData;
-    const salt = await bcrypt.genSalt(10);
-    const password_hash = await bcrypt.hash(password, salt);
-    
-    return this.create({
-      ...rest,
-      password_hash
-    });
+    try {
+      // Check for existing user first
+      const existingUser = await this.getByEmail(userData.email);
+      if (existingUser) {
+        const error = new Error('User with this email already exists');
+        error.code = '23505';
+        error.constraint = 'users_email_key';
+        throw error;
+      }
+
+      const { password, ...rest } = userData;
+      const salt = await bcrypt.genSalt(10);
+      const password_hash = await bcrypt.hash(password, salt);
+      
+      return this.create({
+        ...rest,
+        password_hash
+      });
+    } catch (error) {
+      console.error('Error in createUser:', error);
+      throw error;
+    }
   }
 
   async getUserWithTaskerProfile(userId) {
@@ -106,8 +132,37 @@ class User extends BaseModel {
         password_hash TEXT NOT NULL,
         date_of_birth DATE NOT NULL,
         is_tasker BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT NOW()
+        created_at TIMESTAMP DEFAULT NOW(),
+        token_created_at TIMESTAMP DEFAULT NOW(),
+        current_token TEXT
       )
+    `;
+    await pool.query(query);
+  }
+
+  // Add current_token column if it doesn't exist
+  async addCurrentTokenColumn() {
+    const query = `
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'users' 
+          AND column_name = 'current_token'
+        ) THEN 
+          ALTER TABLE users ADD COLUMN current_token TEXT;
+        END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'users' 
+          AND column_name = 'token_created_at'
+        ) THEN 
+          ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP DEFAULT NOW();
+        END IF;
+      END $$;
     `;
     await pool.query(query);
   }
@@ -136,7 +191,7 @@ class User extends BaseModel {
   // Get user by ID
   async getById(id) {
     const query = `
-      SELECT id, name, surname, email, date_of_birth, created_at
+      SELECT id, name, surname, email, date_of_birth, created_at, token_created_at, current_token, is_tasker
       FROM ${this.tableName}
       WHERE id = $1
     `;
@@ -147,7 +202,7 @@ class User extends BaseModel {
   // Get user by email
   async getByEmail(email) {
     const query = `
-      SELECT id, name, surname, email, password_hash, date_of_birth, created_at
+      SELECT id, name, surname, email, password_hash, date_of_birth, created_at, token_created_at, current_token
       FROM ${this.tableName}
       WHERE email = $1
     `;
@@ -162,14 +217,25 @@ class User extends BaseModel {
       const salt = await bcrypt.genSalt(10);
       const password_hash = await bcrypt.hash(password, salt);
 
-      // Format date to YYYY-MM-DD if it's a string
-      let formattedDate = date_of_birth;
-      if (typeof date_of_birth === 'string') {
-        // If the date is in a different format, convert it
-        const date = new Date(date_of_birth);
-        if (!isNaN(date)) {
-          formattedDate = date.toISOString().split('T')[0];
+      // Format date to YYYY-MM-DD
+      let formattedDate;
+      if (date_of_birth instanceof Date) {
+        formattedDate = date_of_birth.toISOString().split('T')[0];
+      } else if (typeof date_of_birth === 'string') {
+        // If it's already in YYYY-MM-DD format, use it as is
+        if (/^\d{4}-\d{2}-\d{2}$/.test(date_of_birth)) {
+          formattedDate = date_of_birth;
+        } else {
+          // Try to parse the date string
+          const date = new Date(date_of_birth);
+          if (!isNaN(date)) {
+            formattedDate = date.toISOString().split('T')[0];
+          } else {
+            formattedDate = date_of_birth; // Use as is if we can't parse it
+          }
         }
+      } else {
+        formattedDate = date_of_birth; // Use as is for any other format
       }
 
       console.log('Creating user with date:', formattedDate);
@@ -188,38 +254,33 @@ class User extends BaseModel {
 
   // Update user
   async update(id, data) {
-    const allowedFields = ['name', 'surname', 'email', 'date_of_birth', 'is_tasker'];
-    const updates = Object.keys(data)
-      .filter(key => allowedFields.includes(key))
-      .map(key => `${key} = $${allowedFields.indexOf(key) + 2}`)
-      .join(', ');
+    const allowedFields = ['name', 'surname', 'email', 'date_of_birth', 'is_tasker', 'token_created_at', 'current_token'];
+    
+    // Filter out undefined values and non-allowed fields
+    const updateFields = Object.entries(data)
+      .filter(([key, value]) => allowedFields.includes(key) && value !== undefined)
+      .map(([key]) => key);
 
-    if (!updates) {
+    if (updateFields.length === 0) {
       throw new Error('No valid fields to update');
     }
 
-    const values = [id, ...allowedFields.map(field => data[field])];
+    // Create the SET part of the query and values array
+    const updates = updateFields
+      .map((field, index) => `${field} = $${index + 2}`)
+      .join(', ');
+
+    const values = [id, ...updateFields.map(field => data[field])];
+    
     const query = `
       UPDATE users
       SET ${updates}
       WHERE id = $1
       RETURNING *
     `;
+    
     const result = await pool.query(query, values);
     return result.rows[0];
-  }
-
-  // Generate JWT token
-  generateToken(user) {
-    return jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        isTasker: false // This will be updated when tasker profile is created
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
   }
 
   // Verify password
@@ -294,6 +355,40 @@ class User extends BaseModel {
     `;
     const result = await pool.query(query, [userId]);
     return result.rows[0];
+  }
+
+  async createToken(userId) {
+    try {
+      const user = await this.getById(userId);
+      const now = new Date();
+
+      // Check if user exists
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Create new token with the fixed secret
+      const token = jwt.sign(
+        { 
+          id: user.id, 
+          email: user.email,
+          isTasker: user.is_tasker || false
+        },
+        'sharing_service_secret_key_2024',
+        { expiresIn: '14d' }
+      );
+
+      // Update the token_created_at field and store the new token
+      const updatedUser = await this.update(userId, { 
+        token_created_at: now.toISOString(),
+        current_token: token
+      });
+
+      return token;
+    } catch (error) {
+      console.error('Error in createToken:', error);
+      throw error;
+    }
   }
 }
 

@@ -4,6 +4,71 @@ const pool = require('../config/database');
 class TaskerProfile extends BaseModel {
   constructor() {
     super('tasker_profiles');
+    this.initialize();
+  }
+
+  async initialize() {
+    try {
+      // Create tasker_profiles table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS tasker_profiles (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          profile_photo TEXT,
+          description TEXT,
+          hourly_rate DECIMAL(10,2),
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+
+      // Create tasker_categories table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS tasker_categories (
+          tasker_id INTEGER REFERENCES tasker_profiles(id) ON DELETE CASCADE,
+          category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
+          PRIMARY KEY (tasker_id, category_id)
+        );
+      `);
+
+      // Create tasker_cities table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS tasker_cities (
+          tasker_id INTEGER REFERENCES tasker_profiles(id) ON DELETE CASCADE,
+          city_id INTEGER,
+          PRIMARY KEY (tasker_id, city_id)
+        );
+      `);
+
+      // Drop and recreate tasker_availability table
+      await pool.query(`DROP TABLE IF EXISTS tasker_availability CASCADE;`);
+      
+      // Create tasker_availability table with TIME type
+      await pool.query(`
+        CREATE TABLE tasker_availability (
+          tasker_id INTEGER REFERENCES tasker_profiles(id) ON DELETE CASCADE,
+          date DATE NOT NULL,
+          time_slot TIME NOT NULL,
+          PRIMARY KEY (tasker_id, date, time_slot)
+        );
+      `);
+
+      // Create tasker_gallery table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS tasker_gallery (
+          id SERIAL PRIMARY KEY,
+          tasker_id INTEGER REFERENCES tasker_profiles(id) ON DELETE CASCADE,
+          image_url TEXT NOT NULL,
+          description TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+
+      console.log('TaskerProfile tables initialized successfully');
+    } catch (error) {
+      console.error('Error initializing TaskerProfile tables:', error);
+      throw error;
+    }
   }
 
   // Create tasker profile
@@ -52,12 +117,45 @@ class TaskerProfile extends BaseModel {
 
   // Add availability slot
   async addAvailability(tasker_id, date, time) {
-    const query = `
-      INSERT INTO tasker_availability (tasker_id, date, time_slot)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (tasker_id, date, time_slot) DO NOTHING
-    `;
-    await pool.query(query, [tasker_id, date, time]);
+    try {
+      // Validate date and time
+      if (!date || !time) {
+        throw new Error('Date and time are required for availability');
+      }
+
+      // Ensure date is in YYYY-MM-DD format
+      let formattedDate;
+      if (date instanceof Date) {
+        formattedDate = date.toISOString().split('T')[0];
+      } else if (typeof date === 'string') {
+        // Try to parse the date string
+        const parsedDate = new Date(date);
+        if (isNaN(parsedDate.getTime())) {
+          throw new Error('Invalid date format. Please use YYYY-MM-DD format');
+        }
+        formattedDate = parsedDate.toISOString().split('T')[0];
+      } else {
+        throw new Error('Invalid date format');
+      }
+
+      // Validate time format (HH:mm:ss)
+      if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/.test(time)) {
+        throw new Error('Invalid time format. Must be in HH:mm:ss format');
+      }
+
+      const query = `
+        INSERT INTO tasker_availability (tasker_id, date, time_slot)
+        VALUES ($1, $2, $3::time)
+        ON CONFLICT (tasker_id, date, time_slot) DO NOTHING
+        RETURNING *
+      `;
+      
+      const result = await pool.query(query, [tasker_id, formattedDate, time]);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error adding availability:', error);
+      throw error;
+    }
   }
 
   // Get complete profile with all details
@@ -76,25 +174,67 @@ class TaskerProfile extends BaseModel {
         u.name,
         u.surname,
         u.email,
-        COALESCE(array_remove(array_agg(DISTINCT jsonb_build_object('id', tc.category_id, 'name', c.name)), NULL), '{}') as categories,
-        COALESCE(array_remove(array_agg(DISTINCT jsonb_build_object('id', ci.id, 'name', ci.name)), NULL), '{}') as cities,
-        COALESCE(array_remove(array_agg(DISTINCT ta.date || ' ' || ta.time_slot), NULL), '{}') as availability,
-        COALESCE(array_remove(array_agg(DISTINCT tg.image_url), NULL), '{}') as gallery
+        COALESCE(
+          ARRAY(
+            SELECT jsonb_build_object('id', tc2.category_id, 'name', c2.name)
+            FROM tasker_categories tc2
+            JOIN categories c2 ON tc2.category_id = c2.id
+            WHERE tc2.tasker_id = tp.id
+          ),
+          ARRAY[]::jsonb[]
+        ) as categories,
+        COALESCE(
+          ARRAY(
+            SELECT jsonb_build_object('id', ci2.id, 'name', ci2.name)
+            FROM tasker_cities tci2
+            JOIN cities ci2 ON tci2.city_id = ci2.id
+            WHERE tci2.tasker_id = tp.id
+          ),
+          ARRAY[]::jsonb[]
+        ) as cities,
+        COALESCE(
+          ARRAY(
+            SELECT jsonb_build_object(
+              'date', to_char(ta2.date, 'YYYY-MM-DD'),
+              'time', to_char(ta2.time_slot, 'HH24:MI:SS')
+            )
+            FROM tasker_availability ta2
+            WHERE ta2.tasker_id = tp.id
+            ORDER BY ta2.date, ta2.time_slot
+          ),
+          ARRAY[]::jsonb[]
+        ) as availability,
+        COALESCE(
+          ARRAY(
+            SELECT tg2.image_url
+            FROM tasker_gallery tg2
+            WHERE tg2.tasker_id = tp.id
+          ),
+          ARRAY[]::text[]
+        ) as gallery
       FROM tasker_profiles tp
       JOIN users u ON tp.user_id = u.id
-      LEFT JOIN tasker_categories tc ON tp.id = tc.tasker_id
-      LEFT JOIN categories c ON tc.category_id = c.id
-      LEFT JOIN tasker_cities tci ON tp.id = tci.tasker_id
-      LEFT JOIN cities ci ON tci.city_id = ci.id
-      LEFT JOIN tasker_availability ta ON tp.id = ta.tasker_id
-      LEFT JOIN tasker_gallery tg ON tp.id = tg.tasker_id
       LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id
       LEFT JOIN reviews r ON pt.id = r.planned_task_id
       WHERE tp.user_id = $1
       GROUP BY tp.id, u.id, u.name, u.surname, u.email
     `;
     const result = await pool.query(query, [user_id]);
-    return result.rows[0];
+    
+    // Format the result to ensure proper structure
+    if (result.rows[0]) {
+      const profile = result.rows[0];
+      
+      // Ensure all arrays are properly initialized
+      profile.categories = Array.isArray(profile.categories) ? profile.categories : [];
+      profile.cities = Array.isArray(profile.cities) ? profile.cities : [];
+      profile.availability = Array.isArray(profile.availability) ? profile.availability : [];
+      profile.gallery = Array.isArray(profile.gallery) ? profile.gallery : [];
+      
+      return profile;
+    }
+    
+    return null;
   }
 
   // Find profile by user ID
@@ -262,6 +402,257 @@ class TaskerProfile extends BaseModel {
     `;
     const result = await pool.query(query, [tasker_id]);
     return result.rows[0];
+  }
+
+  // Update tasker profile
+  async update(user_id, data) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Update main profile data
+      const { profile_photo, description, hourly_rate, categories, cities, availability } = data;
+      
+      const updateQuery = `
+        UPDATE tasker_profiles
+        SET 
+          profile_photo = COALESCE($1, profile_photo),
+          description = COALESCE($2, description),
+          hourly_rate = COALESCE($3, hourly_rate),
+          updated_at = NOW()
+        WHERE user_id = $4
+        RETURNING *
+      `;
+      
+      const result = await client.query(updateQuery, [
+        profile_photo,
+        description,
+        hourly_rate,
+        user_id
+      ]);
+
+      const taskerProfile = result.rows[0];
+      if (!taskerProfile) {
+        throw new Error('Tasker profile not found');
+      }
+
+      // 2. Update categories if provided
+      if (Array.isArray(categories)) {
+        // Delete existing categories
+        await client.query('DELETE FROM tasker_categories WHERE tasker_id = $1', [taskerProfile.id]);
+        
+        // Add new categories
+        for (const category of categories) {
+          const categoryId = typeof category === 'object' ? category.id : category;
+          await client.query(
+            'INSERT INTO tasker_categories (tasker_id, category_id) VALUES ($1, $2)',
+            [taskerProfile.id, categoryId]
+          );
+        }
+      }
+
+      // 3. Update cities if provided
+      if (Array.isArray(cities)) {
+        // Delete existing cities
+        await client.query('DELETE FROM tasker_cities WHERE tasker_id = $1', [taskerProfile.id]);
+        
+        // Add new cities
+        for (const city of cities) {
+          const cityId = typeof city === 'object' ? city.id : city;
+          await client.query(
+            'INSERT INTO tasker_cities (tasker_id, city_id) VALUES ($1, $2)',
+            [taskerProfile.id, cityId]
+          );
+        }
+      }
+
+      // 4. Update availability if provided
+      if (Array.isArray(availability)) {
+        // Delete existing availability
+        await client.query('DELETE FROM tasker_availability WHERE tasker_id = $1', [taskerProfile.id]);
+        
+        // Add new availability slots
+        for (const slot of availability) {
+          if (slot.date && slot.time) {
+            // Validate time format (HH:mm:ss)
+            if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/.test(slot.time)) {
+              throw new Error('Invalid time format. Must be in HH:mm:ss format');
+            }
+
+            await client.query(
+              'INSERT INTO tasker_availability (tasker_id, date, time_slot) VALUES ($1, $2, $3::time)',
+              [taskerProfile.id, slot.date, slot.time]
+            );
+          }
+        }
+      }
+
+      await client.query('COMMIT');
+
+      // Get and return the updated profile with all details
+      return this.getCompleteProfile(user_id);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error updating tasker profile:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Get all tasker profiles with complete information
+  async getAllProfiles() {
+    const query = `
+      SELECT 
+        tp.id,
+        CASE 
+          WHEN tp.profile_photo LIKE 'http%' THEN CONCAT('images/', SPLIT_PART(tp.profile_photo, '/images/', 2))
+          ELSE tp.profile_photo
+        END as profile_photo,
+        tp.description,
+        tp.hourly_rate,
+        COALESCE(AVG(r.rating), 0) as rating,
+        COUNT(DISTINCT r.id) as review_count,
+        u.name,
+        u.surname,
+        u.email,
+        COALESCE(
+          ARRAY(
+            SELECT jsonb_build_object('id', tc2.category_id, 'name', c2.name)
+            FROM tasker_categories tc2
+            JOIN categories c2 ON tc2.category_id = c2.id
+            WHERE tc2.tasker_id = tp.id
+          ),
+          ARRAY[]::jsonb[]
+        ) as categories,
+        COALESCE(
+          ARRAY(
+            SELECT jsonb_build_object('id', ci2.id, 'name', ci2.name)
+            FROM tasker_cities tci2
+            JOIN cities ci2 ON tci2.city_id = ci2.id
+            WHERE tci2.tasker_id = tp.id
+          ),
+          ARRAY[]::jsonb[]
+        ) as cities,
+        COALESCE(
+          ARRAY(
+            SELECT jsonb_build_object(
+              'date', to_char(ta2.date, 'YYYY-MM-DD'),
+              'time', to_char(ta2.time_slot, 'HH24:MI:SS')
+            )
+            FROM tasker_availability ta2
+            WHERE ta2.tasker_id = tp.id
+            ORDER BY ta2.date, ta2.time_slot
+          ),
+          ARRAY[]::jsonb[]
+        ) as availability,
+        COALESCE(
+          ARRAY(
+            SELECT tg2.image_url
+            FROM tasker_gallery tg2
+            WHERE tg2.tasker_id = tp.id
+          ),
+          ARRAY[]::text[]
+        ) as gallery
+      FROM tasker_profiles tp
+      JOIN users u ON tp.user_id = u.id
+      LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id
+      LEFT JOIN reviews r ON pt.id = r.planned_task_id
+      GROUP BY tp.id, u.id, u.name, u.surname, u.email
+      ORDER BY rating DESC, review_count DESC
+    `;
+    
+    const result = await pool.query(query);
+    
+    // Format the results to ensure proper structure
+    return result.rows.map(profile => {
+      // Ensure all arrays are properly initialized
+      profile.categories = Array.isArray(profile.categories) ? profile.categories : [];
+      profile.cities = Array.isArray(profile.cities) ? profile.cities : [];
+      profile.availability = Array.isArray(profile.availability) ? profile.availability : [];
+      profile.gallery = Array.isArray(profile.gallery) ? profile.gallery : [];
+      
+      return profile;
+    });
+  }
+
+  // Get tasker profile by profile ID
+  async getProfileById(profileId) {
+    const query = `
+      SELECT 
+        tp.id,
+        CASE 
+          WHEN tp.profile_photo LIKE 'http%' THEN CONCAT('images/', SPLIT_PART(tp.profile_photo, '/images/', 2))
+          ELSE tp.profile_photo
+        END as profile_photo,
+        tp.description,
+        tp.hourly_rate,
+        COALESCE(AVG(r.rating), 0) as rating,
+        COUNT(DISTINCT r.id) as review_count,
+        u.name,
+        u.surname,
+        u.email,
+        COALESCE(
+          ARRAY(
+            SELECT jsonb_build_object('id', tc2.category_id, 'name', c2.name)
+            FROM tasker_categories tc2
+            JOIN categories c2 ON tc2.category_id = c2.id
+            WHERE tc2.tasker_id = tp.id
+          ),
+          ARRAY[]::jsonb[]
+        ) as categories,
+        COALESCE(
+          ARRAY(
+            SELECT jsonb_build_object('id', ci2.id, 'name', ci2.name)
+            FROM tasker_cities tci2
+            JOIN cities ci2 ON tci2.city_id = ci2.id
+            WHERE tci2.tasker_id = tp.id
+          ),
+          ARRAY[]::jsonb[]
+        ) as cities,
+        COALESCE(
+          ARRAY(
+            SELECT jsonb_build_object(
+              'date', to_char(ta2.date, 'YYYY-MM-DD'),
+              'time', to_char(ta2.time_slot, 'HH24:MI:SS')
+            )
+            FROM tasker_availability ta2
+            WHERE ta2.tasker_id = tp.id
+            ORDER BY ta2.date, ta2.time_slot
+          ),
+          ARRAY[]::jsonb[]
+        ) as availability,
+        COALESCE(
+          ARRAY(
+            SELECT tg2.image_url
+            FROM tasker_gallery tg2
+            WHERE tg2.tasker_id = tp.id
+          ),
+          ARRAY[]::text[]
+        ) as gallery
+      FROM tasker_profiles tp
+      JOIN users u ON tp.user_id = u.id
+      LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id
+      LEFT JOIN reviews r ON pt.id = r.planned_task_id
+      WHERE tp.id = $1
+      GROUP BY tp.id, u.id, u.name, u.surname, u.email
+    `;
+    
+    const result = await pool.query(query, [profileId]);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const profile = result.rows[0];
+    
+    // Ensure all arrays are properly initialized
+    profile.categories = Array.isArray(profile.categories) ? profile.categories : [];
+    profile.cities = Array.isArray(profile.cities) ? profile.cities : [];
+    profile.availability = Array.isArray(profile.availability) ? profile.availability : [];
+    profile.gallery = Array.isArray(profile.gallery) ? profile.gallery : [];
+    
+    return profile;
   }
 }
 
