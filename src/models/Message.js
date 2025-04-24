@@ -6,6 +6,30 @@ class Message extends BaseModel {
     super('messages');
   }
 
+  async initialize() {
+    try {
+      // Drop the table first to ensure clean state
+      await pool.query('DROP TABLE IF EXISTS messages CASCADE');
+      
+      // Create the table with correct structure
+      await pool.query(`
+        CREATE TABLE messages (
+          id SERIAL PRIMARY KEY,
+          sender_id INTEGER REFERENCES users(id),
+          receiver_id INTEGER REFERENCES users(id),
+          content TEXT NOT NULL,
+          type VARCHAR(20) DEFAULT 'message',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          seen BOOLEAN DEFAULT FALSE
+        )
+      `);
+      console.log('Messages table initialized successfully');
+    } catch (error) {
+      console.error('Error initializing messages table:', error);
+      throw error;
+    }
+  }
+
   async getConversation(userId1, userId2) {
     const query = `
       SELECT m.*, 

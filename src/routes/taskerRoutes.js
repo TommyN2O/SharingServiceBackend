@@ -1,25 +1,61 @@
 const express = require('express');
 const router = express.Router();
-const taskerController = require('../controllers/taskerController');
 const auth = require('../middleware/auth');
+const {
+  getProfile,
+  createProfile,
+  updateProfile,
+  getAvailableTasks,
+  sendOffer,
+  acceptTask,
+  getTasks,
+  updateTaskStatus,
+  deleteProfile,
+  getAllProfiles,
+  getProfileById,
+  updateAvailability,
+  uploadFields,
+  sendTaskRequest,
+  getTasksBySender,
+  getTaskRequestsReceived,
+  getTaskRequestById,
+  insertTestData,
+  updateTaskRequestStatus,
+  getTaskById
+} = require('../controllers/taskerController');
 
-// All routes require authentication
+// Apply authentication middleware to all routes
 router.use(auth);
 
-// Tasker profile management
-router.get('/profile', taskerController.getProfile);
-router.post('/profile', taskerController.createProfile);
-router.put('/profile', taskerController.updateProfile);
-router.delete('/profile', taskerController.deleteProfile);
-router.get('/profile/:userId', taskerController.getProfile);
-router.get('/profiles', taskerController.getAllProfiles);
-router.get('/profiles/:id', taskerController.getProfileById);
+// Profile routes
+router.get('/profile', getProfile);
+router.post('/profile', uploadFields, createProfile);
+router.put('/profile', uploadFields, updateProfile);
+router.delete('/profile', deleteProfile);
 
-// Task management
-router.get('/available-tasks', taskerController.getAvailableTasks);
-router.post('/offers', taskerController.sendOffer);
-router.post('/tasks/:taskId/accept', taskerController.acceptTask);
-router.get('/tasks', taskerController.getTasks);
-router.put('/tasks/:taskId/status', taskerController.updateTaskStatus);
+// Task management routes
+router.get('/tasks', getTasks);
+router.get('/tasks/available', getAvailableTasks);
+router.post('/tasks/:taskId/offer', sendOffer);
+router.post('/tasks/:taskId/accept', acceptTask);
+router.put('/tasks/:taskId/status', updateTaskStatus);
+
+// Task request routes
+router.post('/send-request', uploadFields, sendTaskRequest);
+router.get('/tasks/sent', getTasksBySender);
+router.get('/tasks/sent/:id', getTaskById);
+router.get('/tasks/received', getTaskRequestsReceived);
+router.get('/tasks/received/:id', getTaskRequestById);
+router.put('/tasks/received/:id/status', updateTaskRequestStatus);
+
+// Profile listing routes
+router.get('/profiles', getAllProfiles);
+router.get('/profiles/:id', getProfileById);
+
+// Availability management
+router.put('/profile/availability', updateAvailability);
+
+// Test endpoints
+router.post('/test/data', insertTestData);
 
 module.exports = router; 

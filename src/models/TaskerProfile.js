@@ -1,5 +1,6 @@
 const BaseModel = require('./BaseModel');
 const pool = require('../config/database');
+const auth = require('../middleware/auth');
 
 class TaskerProfile extends BaseModel {
   constructor() {
@@ -40,12 +41,9 @@ class TaskerProfile extends BaseModel {
         );
       `);
 
-      // Drop and recreate tasker_availability table
-      await pool.query(`DROP TABLE IF EXISTS tasker_availability CASCADE;`);
-      
-      // Create tasker_availability table with TIME type
+      // Create tasker_availability table without dropping
       await pool.query(`
-        CREATE TABLE tasker_availability (
+        CREATE TABLE IF NOT EXISTS tasker_availability (
           tasker_id INTEGER REFERENCES tasker_profiles(id) ON DELETE CASCADE,
           date DATE NOT NULL,
           time_slot TIME NOT NULL,
@@ -59,7 +57,49 @@ class TaskerProfile extends BaseModel {
           id SERIAL PRIMARY KEY,
           tasker_id INTEGER REFERENCES tasker_profiles(id) ON DELETE CASCADE,
           image_url TEXT NOT NULL,
-          description TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+
+      // Create task_requests table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS task_requests (
+          id SERIAL PRIMARY KEY,
+          description TEXT NOT NULL,
+          city_id INTEGER NOT NULL,
+          duration TEXT NOT NULL,
+          sender_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          tasker_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          status VARCHAR(20) DEFAULT 'pending',
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+
+      // Create task_request_categories table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS task_request_categories (
+          task_request_id INTEGER REFERENCES task_requests(id) ON DELETE CASCADE,
+          category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
+          PRIMARY KEY (task_request_id, category_id)
+        );
+      `);
+
+      // Create task_request_availability table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS task_request_availability (
+          task_request_id INTEGER REFERENCES task_requests(id) ON DELETE CASCADE,
+          date DATE NOT NULL,
+          time_slot TIME NOT NULL,
+          PRIMARY KEY (task_request_id, date, time_slot)
+        );
+      `);
+
+      // Create task_request_gallery table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS task_request_gallery (
+          id SERIAL PRIMARY KEY,
+          task_request_id INTEGER REFERENCES task_requests(id) ON DELETE CASCADE,
+          image_url TEXT NOT NULL,
           created_at TIMESTAMP DEFAULT NOW()
         );
       `);
@@ -159,13 +199,14 @@ class TaskerProfile extends BaseModel {
   }
 
   // Get complete profile with all details
-  async getCompleteProfile(user_id) {
+  async getCompleteProfile(userId) {
     const query = `
       SELECT 
         tp.id,
         CASE 
-          WHEN tp.profile_photo LIKE 'http%' THEN CONCAT('images/', SPLIT_PART(tp.profile_photo, '/images/', 2))
-          ELSE tp.profile_photo
+          WHEN tp.profile_photo LIKE 'http%' THEN tp.profile_photo
+          WHEN tp.profile_photo LIKE 'images/%' THEN tp.profile_photo
+          ELSE CONCAT('images/', tp.profile_photo)
         END as profile_photo,
         tp.description,
         tp.hourly_rate,
@@ -176,39 +217,44 @@ class TaskerProfile extends BaseModel {
         u.email,
         COALESCE(
           ARRAY(
-            SELECT jsonb_build_object('id', tc2.category_id, 'name', c2.name)
-            FROM tasker_categories tc2
-            JOIN categories c2 ON tc2.category_id = c2.id
-            WHERE tc2.tasker_id = tp.id
+            SELECT jsonb_build_object('id', c.id, 'name', c.name)
+            FROM tasker_categories tc
+            JOIN categories c ON tc.category_id = c.id
+            WHERE tc.tasker_id = tp.id
           ),
           ARRAY[]::jsonb[]
         ) as categories,
         COALESCE(
           ARRAY(
-            SELECT jsonb_build_object('id', ci2.id, 'name', ci2.name)
-            FROM tasker_cities tci2
-            JOIN cities ci2 ON tci2.city_id = ci2.id
-            WHERE tci2.tasker_id = tp.id
+            SELECT jsonb_build_object('id', c.id, 'name', c.name)
+            FROM tasker_cities tc
+            JOIN cities c ON tc.city_id = c.id
+            WHERE tc.tasker_id = tp.id
           ),
           ARRAY[]::jsonb[]
         ) as cities,
         COALESCE(
           ARRAY(
             SELECT jsonb_build_object(
-              'date', to_char(ta2.date, 'YYYY-MM-DD'),
-              'time', to_char(ta2.time_slot, 'HH24:MI:SS')
+              'date', to_char(ta.date, 'YYYY-MM-DD'),
+              'time', to_char(ta.time_slot::time, 'HH24:MI:SS')
             )
-            FROM tasker_availability ta2
-            WHERE ta2.tasker_id = tp.id
-            ORDER BY ta2.date, ta2.time_slot
+            FROM tasker_availability ta
+            WHERE ta.tasker_id = tp.id
+            ORDER BY ta.date, ta.time_slot
           ),
           ARRAY[]::jsonb[]
         ) as availability,
         COALESCE(
           ARRAY(
-            SELECT tg2.image_url
-            FROM tasker_gallery tg2
-            WHERE tg2.tasker_id = tp.id
+            SELECT 
+              CASE
+                WHEN tg.image_url LIKE 'images/%' THEN tg.image_url
+                ELSE CONCAT('images/', tg.image_url)
+              END
+            FROM tasker_gallery tg
+            WHERE tg.tasker_id = tp.id
+            ORDER BY tg.created_at DESC
           ),
           ARRAY[]::text[]
         ) as gallery
@@ -217,24 +263,33 @@ class TaskerProfile extends BaseModel {
       LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id
       LEFT JOIN reviews r ON pt.id = r.planned_task_id
       WHERE tp.user_id = $1
-      GROUP BY tp.id, u.id, u.name, u.surname, u.email
+      GROUP BY tp.id, u.id
     `;
-    const result = await pool.query(query, [user_id]);
+
+    const result = await pool.query(query, [userId]);
     
-    // Format the result to ensure proper structure
-    if (result.rows[0]) {
-      const profile = result.rows[0];
-      
-      // Ensure all arrays are properly initialized
-      profile.categories = Array.isArray(profile.categories) ? profile.categories : [];
-      profile.cities = Array.isArray(profile.cities) ? profile.cities : [];
-      profile.availability = Array.isArray(profile.availability) ? profile.availability : [];
-      profile.gallery = Array.isArray(profile.gallery) ? profile.gallery : [];
-      
-      return profile;
+    if (result.rows.length === 0) {
+      return null;
     }
-    
-    return null;
+
+    const profile = result.rows[0];
+
+    // Format the response
+    return {
+      id: profile.id,
+      profile_photo: profile.profile_photo,
+      description: profile.description || '',
+      hourly_rate: profile.hourly_rate ? profile.hourly_rate.toString() : '0.00',
+      rating: parseFloat(profile.rating) || 0,
+      review_count: parseInt(profile.review_count) || 0,
+      name: profile.name,
+      surname: profile.surname,
+      email: profile.email,
+      categories: Array.isArray(profile.categories) ? profile.categories : [],
+      cities: Array.isArray(profile.cities) ? profile.cities : [],
+      availability: Array.isArray(profile.availability) ? profile.availability : [],
+      gallery: Array.isArray(profile.gallery) ? profile.gallery : []
+    };
   }
 
   // Find profile by user ID
@@ -361,13 +416,16 @@ class TaskerProfile extends BaseModel {
   }
 
   // Add photo to gallery
-  async addGalleryPhoto(tasker_id, image_path, description = null) {
+  async addGalleryPhoto(tasker_id, image_url) {
+    // Remove any 'images/' prefix if it exists and get just the relative path
+    const relativePath = image_url.replace(/^images\//, '');
+    
     const query = `
-      INSERT INTO tasker_gallery (tasker_id, image_path, description)
-      VALUES ($1, $2, $3)
+      INSERT INTO tasker_gallery (tasker_id, image_url)
+      VALUES ($1, $2)
       RETURNING *
     `;
-    const result = await pool.query(query, [tasker_id, image_path, description]);
+    const result = await pool.query(query, [tasker_id, relativePath]);
     return result.rows[0];
   }
 
@@ -410,9 +468,13 @@ class TaskerProfile extends BaseModel {
     try {
       await client.query('BEGIN');
 
+      console.log('Update data received:', data);
+
       // 1. Update main profile data
       const { profile_photo, description, hourly_rate, categories, cities, availability } = data;
       
+      console.log('Extracted availability:', availability);
+
       const updateQuery = `
         UPDATE tasker_profiles
         SET 
@@ -452,48 +514,136 @@ class TaskerProfile extends BaseModel {
       }
 
       // 3. Update cities if provided
-      if (Array.isArray(cities)) {
-        // Delete existing cities
-        await client.query('DELETE FROM tasker_cities WHERE tasker_id = $1', [taskerProfile.id]);
-        
-        // Add new cities
-        for (const city of cities) {
-          const cityId = typeof city === 'object' ? city.id : city;
-          await client.query(
-            'INSERT INTO tasker_cities (tasker_id, city_id) VALUES ($1, $2)',
-            [taskerProfile.id, cityId]
-          );
+      if (Array.isArray(cities) && cities.length > 0) {
+        // Validate all city IDs first
+        const cityIds = cities.map(city => typeof city === 'object' ? city.id : city);
+        const validCities = await client.query(
+          'SELECT id FROM cities WHERE id = ANY($1)',
+          [cityIds]
+        );
+
+        // Only proceed if all cities are valid
+        if (validCities.rows.length === cityIds.length) {
+          // Delete existing cities
+          await client.query('DELETE FROM tasker_cities WHERE tasker_id = $1', [taskerProfile.id]);
+          
+          // Add new cities
+          for (const cityId of cityIds) {
+            await client.query(
+              'INSERT INTO tasker_cities (tasker_id, city_id) VALUES ($1, $2)',
+              [taskerProfile.id, cityId]
+            );
+          }
+        } else {
+          throw new Error('One or more invalid city IDs provided');
         }
       }
 
       // 4. Update availability if provided
-      if (Array.isArray(availability)) {
-        // Delete existing availability
-        await client.query('DELETE FROM tasker_availability WHERE tasker_id = $1', [taskerProfile.id]);
+      if (availability) {
+        console.log('Raw availability data:', JSON.stringify(availability, null, 2));
         
-        // Add new availability slots
-        for (const slot of availability) {
-          if (slot.date && slot.time) {
-            // Validate time format (HH:mm:ss)
-            if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/.test(slot.time)) {
-              throw new Error('Invalid time format. Must be in HH:mm:ss format');
+        // Ensure availability is an array
+        const availabilityArray = Array.isArray(availability) ? availability : [availability];
+        console.log('Availability array:', JSON.stringify(availabilityArray, null, 2));
+
+        // Delete existing availability
+        const deleteResult = await client.query('DELETE FROM tasker_availability WHERE tasker_id = $1', [taskerProfile.id]);
+        console.log('Deleted existing availability:', {
+          tasker_id: taskerProfile.id,
+          rowsDeleted: deleteResult.rowCount
+        });
+        
+        // Add new availability
+        const insertionErrors = [];
+        for (const slot of availabilityArray) {
+          try {
+            let dateStr, timeStr;
+            
+            if (typeof slot === 'string') {
+              // Handle string format "YYYY-MM-DD HH:mm:ss"
+              [dateStr, timeStr] = slot.split(' ');
+              console.log('Split date and time:', { dateStr, timeStr });
+            } else if (slot.date && slot.time) {
+              // Handle object format from Kotlin AvailabilitySlot
+              dateStr = slot.date;
+              timeStr = slot.time;
+            } else {
+              console.warn('Invalid slot format:', slot);
+              insertionErrors.push({ slot, error: 'Invalid slot format' });
+              continue;
             }
 
-            await client.query(
+            if (!dateStr || !timeStr) {
+              console.warn('Missing date or time:', { dateStr, timeStr });
+              insertionErrors.push({ slot, error: 'Missing date or time' });
+              continue;
+            }
+
+            // Ensure date is in YYYY-MM-DD format
+            const dateObj = new Date(dateStr);
+            if (isNaN(dateObj.getTime())) {
+              console.warn('Invalid date:', dateStr);
+              insertionErrors.push({ slot, error: 'Invalid date format' });
+              continue;
+            }
+            const formattedDate = dateObj.toISOString().split('T')[0];
+            
+            // Handle time format
+            let formattedTime;
+            if (timeStr.includes(':')) {
+              // If time already has colons, ensure it has seconds
+              formattedTime = timeStr.split(':').length === 2 ? `${timeStr}:00` : timeStr;
+            } else {
+              // If time is in another format, try to parse it
+              try {
+                const timeObj = new Date(`1970-01-01T${timeStr}`);
+                formattedTime = timeObj.toTimeString().split(' ')[0];
+              } catch (e) {
+                console.warn('Invalid time format:', timeStr);
+                insertionErrors.push({ slot, error: 'Invalid time format' });
+                continue;
+              }
+            }
+
+            console.log('Inserting availability:', {
+              tasker_id: taskerProfile.id,
+              date: formattedDate,
+              time: formattedTime
+            });
+
+            const insertResult = await client.query(
               'INSERT INTO tasker_availability (tasker_id, date, time_slot) VALUES ($1, $2, $3::time)',
-              [taskerProfile.id, slot.date, slot.time]
+              [taskerProfile.id, formattedDate, formattedTime]
             );
+            
+            console.log('Successfully inserted availability:', {
+              rowCount: insertResult.rowCount
+            });
+          } catch (error) {
+            console.error('Error inserting availability:', {
+              slot,
+              error: error.message
+            });
+            insertionErrors.push({ slot, error: error.message });
           }
+        }
+
+        // If all insertions failed, throw an error
+        if (insertionErrors.length === availabilityArray.length) {
+          throw new Error('Failed to insert any availability slots: ' + JSON.stringify(insertionErrors));
         }
       }
 
+      // Get the updated profile with all related data
+      const updatedProfile = await this.getCompleteProfile(user_id);
+      console.log('Final updated profile availability:', JSON.stringify(updatedProfile.availability, null, 2));
+      
       await client.query('COMMIT');
-
-      // Get and return the updated profile with all details
-      return this.getCompleteProfile(user_id);
+      return updatedProfile;
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Error updating tasker profile:', error);
+      console.error('Error in update:', error);
       throw error;
     } finally {
       client.release();
@@ -506,8 +656,9 @@ class TaskerProfile extends BaseModel {
       SELECT 
         tp.id,
         CASE 
-          WHEN tp.profile_photo LIKE 'http%' THEN CONCAT('images/', SPLIT_PART(tp.profile_photo, '/images/', 2))
-          ELSE tp.profile_photo
+          WHEN tp.profile_photo LIKE 'http%' THEN tp.profile_photo
+          WHEN tp.profile_photo LIKE 'images/%' THEN tp.profile_photo
+          ELSE CONCAT('images/', tp.profile_photo)
         END as profile_photo,
         tp.description,
         tp.hourly_rate,
@@ -518,7 +669,7 @@ class TaskerProfile extends BaseModel {
         u.email,
         COALESCE(
           ARRAY(
-            SELECT jsonb_build_object('id', tc2.category_id, 'name', c2.name)
+            SELECT jsonb_build_object('id', c2.id, 'name', c2.name)
             FROM tasker_categories tc2
             JOIN categories c2 ON tc2.category_id = c2.id
             WHERE tc2.tasker_id = tp.id
@@ -548,9 +699,14 @@ class TaskerProfile extends BaseModel {
         ) as availability,
         COALESCE(
           ARRAY(
-            SELECT tg2.image_url
+            SELECT 
+              CASE
+                WHEN tg2.image_url LIKE 'images/%' THEN tg2.image_url
+                ELSE CONCAT('images/', tg2.image_url)
+              END
             FROM tasker_gallery tg2
             WHERE tg2.tasker_id = tp.id
+            ORDER BY tg2.created_at DESC
           ),
           ARRAY[]::text[]
         ) as gallery
@@ -564,16 +720,15 @@ class TaskerProfile extends BaseModel {
     
     const result = await pool.query(query);
     
-    // Format the results to ensure proper structure
-    return result.rows.map(profile => {
-      // Ensure all arrays are properly initialized
-      profile.categories = Array.isArray(profile.categories) ? profile.categories : [];
-      profile.cities = Array.isArray(profile.cities) ? profile.cities : [];
-      profile.availability = Array.isArray(profile.availability) ? profile.availability : [];
-      profile.gallery = Array.isArray(profile.gallery) ? profile.gallery : [];
-      
-      return profile;
-    });
+    return result.rows.map(profile => ({
+      ...profile,
+      hourly_rate: profile.hourly_rate ? profile.hourly_rate.toString() : '0.00',
+      description: profile.description || '',
+      categories: Array.isArray(profile.categories) ? profile.categories : [],
+      cities: Array.isArray(profile.cities) ? profile.cities : [],
+      availability: Array.isArray(profile.availability) ? profile.availability : [],
+      gallery: Array.isArray(profile.gallery) ? profile.gallery : []
+    }));
   }
 
   // Get tasker profile by profile ID
@@ -582,8 +737,9 @@ class TaskerProfile extends BaseModel {
       SELECT 
         tp.id,
         CASE 
-          WHEN tp.profile_photo LIKE 'http%' THEN CONCAT('images/', SPLIT_PART(tp.profile_photo, '/images/', 2))
-          ELSE tp.profile_photo
+          WHEN tp.profile_photo LIKE 'http%' THEN tp.profile_photo
+          WHEN tp.profile_photo LIKE 'images/%' THEN tp.profile_photo
+          ELSE CONCAT('images/', tp.profile_photo)
         END as profile_photo,
         tp.description,
         tp.hourly_rate,
@@ -594,7 +750,7 @@ class TaskerProfile extends BaseModel {
         u.email,
         COALESCE(
           ARRAY(
-            SELECT jsonb_build_object('id', tc2.category_id, 'name', c2.name)
+            SELECT jsonb_build_object('id', c2.id, 'name', c2.name)
             FROM tasker_categories tc2
             JOIN categories c2 ON tc2.category_id = c2.id
             WHERE tc2.tasker_id = tp.id
@@ -624,9 +780,14 @@ class TaskerProfile extends BaseModel {
         ) as availability,
         COALESCE(
           ARRAY(
-            SELECT tg2.image_url
+            SELECT 
+              CASE
+                WHEN tg2.image_url LIKE 'images/%' THEN tg2.image_url
+                ELSE CONCAT('images/', tg2.image_url)
+              END
             FROM tasker_gallery tg2
             WHERE tg2.tasker_id = tp.id
+            ORDER BY tg2.created_at DESC
           ),
           ARRAY[]::text[]
         ) as gallery
@@ -646,13 +807,15 @@ class TaskerProfile extends BaseModel {
 
     const profile = result.rows[0];
     
-    // Ensure all arrays are properly initialized
-    profile.categories = Array.isArray(profile.categories) ? profile.categories : [];
-    profile.cities = Array.isArray(profile.cities) ? profile.cities : [];
-    profile.availability = Array.isArray(profile.availability) ? profile.availability : [];
-    profile.gallery = Array.isArray(profile.gallery) ? profile.gallery : [];
-    
-    return profile;
+    return {
+      ...profile,
+      hourly_rate: profile.hourly_rate ? profile.hourly_rate.toString() : '0.00',
+      description: profile.description || '',
+      categories: Array.isArray(profile.categories) ? profile.categories : [],
+      cities: Array.isArray(profile.cities) ? profile.cities : [],
+      availability: Array.isArray(profile.availability) ? profile.availability : [],
+      gallery: Array.isArray(profile.gallery) ? profile.gallery : []
+    };
   }
 }
 

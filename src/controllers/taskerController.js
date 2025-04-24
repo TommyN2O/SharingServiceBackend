@@ -5,6 +5,51 @@ const Message = require('../models/Message');
 const User = require('../models/User');
 const pool = require('../config/database');
 const path = require('path');
+const multer = require('multer');
+const fs = require('fs');
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    // Check if the field is for gallery images
+    const folder = file.fieldname === 'galleryImages' || file.fieldname === 'gallery' ? 'gallery' : 'profiles';
+    const dir = path.join('public', 'images', folder);
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    // Generate unique filename with original extension
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname) || '.jpg'; // Default to .jpg if no extension
+    cb(null, uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept images and handle content type from Android
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/octet-stream') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+// Middleware for handling multiple file uploads
+const uploadFields = upload.fields([
+  { name: 'profileImage', maxCount: 1 },
+  { name: 'profile_photo', maxCount: 1 },  // Add support for profile_photo field
+  { name: 'galleryImages', maxCount: 10 },
+  { name: 'gallery', maxCount: 10 }  // Add support for gallery field
+]);
 
 const taskerController = {
   // Get tasker profile
@@ -29,47 +74,51 @@ const taskerController = {
     try {
       console.log('Creating tasker profile for user:', req.user.id);
       console.log('Request body:', req.body);
+      console.log('Files received:', req.files);
+
+      // Parse the tasker profile JSON data
+      let taskerProfileData;
+      try {
+        taskerProfileData = JSON.parse(req.body.tasker_profile_json);
+        console.log('Parsed tasker profile data:', taskerProfileData);
+      } catch (error) {
+        console.error('Error parsing tasker profile JSON:', error);
+        return res.status(400).json({
+          error: 'Invalid tasker profile JSON',
+          details: error.message
+        });
+      }
 
       const {
-        profile_photo,
         description,
         hourly_rate,
         categories,
         cities,
-        availability
-      } = req.body;
+        availability = []
+      } = taskerProfileData;
 
       // Validate required fields
-      if (!description || !hourly_rate || !categories || !cities || !availability) {
-        console.log('Missing required fields:', {
-          description: !!description,
-          hourly_rate: !!hourly_rate,
-          categories: !!categories,
-          cities: !!cities,
-          availability: !!availability
-        });
+      if (!description || !hourly_rate || !categories?.length || !cities?.length) {
         return res.status(400).json({
           error: 'Missing required fields',
           received: {
             description: !!description,
             hourly_rate: !!hourly_rate,
-            categories: !!categories,
-            cities: !!cities,
-            availability: !!availability
+            categories: categories?.length > 0,
+            cities: cities?.length > 0
           }
         });
       }
 
-      // Validate availability format
-      if (!Array.isArray(availability) || !availability.every(slot => slot.date && slot.time)) {
-        return res.status(400).json({
-          error: 'Invalid availability format. Each slot must have date and time.',
-          received: availability
-        });
+      // Handle profile photo (check both field names)
+      let finalProfilePhoto = null;
+      if (req.files) {
+        const profilePhotoFile = req.files.profileImage?.[0] || req.files.profile_photo?.[0];
+        if (profilePhotoFile) {
+          console.log('Profile photo file received:', profilePhotoFile);
+          finalProfilePhoto = `images/profiles/${profilePhotoFile.filename}`;
+        }
       }
-
-      // Handle profile photo
-      let finalProfilePhoto = profile_photo || 'images/profiles/default.jpg';
 
       // Start a transaction
       const client = await pool.connect();
@@ -91,23 +140,21 @@ const taskerController = {
         console.log('Tasker profile created:', taskerProfile);
 
         // Add categories
-        if (Array.isArray(categories)) {
-          for (const categoryId of categories) {
-            await TaskerProfile.addCategory(taskerProfile.id, categoryId);
-          }
-          console.log('Categories added');
+        for (const category of categories) {
+          const categoryId = typeof category === 'object' ? category.id : category;
+          await TaskerProfile.addCategory(taskerProfile.id, categoryId);
         }
+        console.log('Categories added:', categories);
 
         // Add cities
-        if (Array.isArray(cities)) {
-          for (const city of cities) {
-            await TaskerProfile.addCity(taskerProfile.id, city);
-          }
-          console.log('Cities added');
+        for (const city of cities) {
+          const cityId = typeof city === 'object' ? city.id : city;
+          await TaskerProfile.addCity(taskerProfile.id, cityId);
         }
+        console.log('Cities added:', cities);
 
-        // Add availability
-        if (Array.isArray(availability)) {
+        // Add availability if any exists
+        if (Array.isArray(availability) && availability.length > 0) {
           for (const slot of availability) {
             if (slot.date && slot.time) {
               // Ensure date is in YYYY-MM-DD format
@@ -115,7 +162,18 @@ const taskerController = {
               await TaskerProfile.addAvailability(taskerProfile.id, formattedDate, slot.time);
             }
           }
-          console.log('Availability added');
+          console.log('Availability added:', availability);
+        }
+
+        // Add gallery photos (check both field names)
+        if (req.files) {
+          const galleryFiles = [...(req.files.galleryImages || []), ...(req.files.gallery || [])];
+          for (const file of galleryFiles) {
+            console.log('Gallery photo file:', file);
+            const imageUrl = `images/gallery/${file.filename}`;
+            await TaskerProfile.addGalleryPhoto(taskerProfile.id, imageUrl);
+          }
+          console.log('Gallery photos added');
         }
 
         await client.query('COMMIT');
@@ -127,6 +185,18 @@ const taskerController = {
       } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error in transaction, rolling back:', error);
+        
+        // Clean up uploaded files in case of error
+        if (req.files) {
+          Object.values(req.files).flat().forEach(file => {
+            if (file.path) {
+              fs.unlink(file.path, (err) => {
+                if (err) console.error('Error deleting file:', err);
+              });
+            }
+          });
+        }
+        
         throw error;
       } finally {
         client.release();
@@ -145,15 +215,29 @@ const taskerController = {
     try {
       console.log('Updating tasker profile for user:', req.user.id);
       console.log('Request body:', req.body);
+      console.log('Files received:', req.files);
+
+      // Parse the tasker profile JSON data
+      let taskerProfileData;
+      try {
+        taskerProfileData = JSON.parse(req.body.tasker_profile_json);
+        console.log('Parsed tasker profile data:', taskerProfileData);
+      } catch (error) {
+        console.error('Error parsing tasker profile JSON:', error);
+        return res.status(400).json({
+          error: 'Invalid tasker profile JSON',
+          details: error.message
+        });
+      }
 
       const {
-        profile_photo,
         description,
         hourly_rate,
         categories,
         cities,
-        availability
-      } = req.body;
+        availability = [],
+        deletedGalleryImages = []  // Array of image URLs to delete
+      } = taskerProfileData;
 
       // Check if user has a tasker profile
       const existingProfile = await TaskerProfile.findByUserId(req.user.id);
@@ -163,17 +247,109 @@ const taskerController = {
         });
       }
 
-      // Update the profile
-      const updatedProfile = await TaskerProfile.update(req.user.id, {
-        profile_photo,
-        description,
-        hourly_rate,
-        categories,
-        cities,
-        availability
-      });
+      // Handle profile photo update
+      let finalProfilePhoto = existingProfile.profile_photo;
+      if (req.files && (req.files.profileImage?.[0] || req.files.profile_photo?.[0])) {
+        const profilePhotoFile = req.files.profileImage?.[0] || req.files.profile_photo?.[0];
+        console.log('New profile photo file received:', profilePhotoFile);
+        
+        // Delete old profile photo if it exists
+        if (finalProfilePhoto) {
+          const oldPhotoPath = path.join('public', finalProfilePhoto);
+          if (fs.existsSync(oldPhotoPath)) {
+            fs.unlinkSync(oldPhotoPath);
+          }
+        }
+        
+        finalProfilePhoto = `images/profiles/${profilePhotoFile.filename}`;
+      }
 
-      res.json(updatedProfile);
+      // Start a transaction
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Delete gallery images if specified
+        if (Array.isArray(deletedGalleryImages) && deletedGalleryImages.length > 0) {
+          console.log('Deleting gallery images:', deletedGalleryImages);
+          
+          // Extract relative paths from URLs or full paths
+          const dbImageUrls = deletedGalleryImages.map(url => {
+            // Remove domain and port if it's a full URL
+            const urlMatch = url.match(/\/images\/gallery\/[^?#]+/);
+            if (urlMatch) {
+              // Extract just the /gallery/filename.jpg part
+              return urlMatch[0].replace(/^\/images\//, '');
+            }
+            // If not a URL, just remove the images/ prefix if it exists
+            return url.replace(/^images\//, '');
+          });
+
+          // Delete from database using the relative paths
+          const placeholders = dbImageUrls.map((_, idx) => `$${idx + 2}`).join(',');
+          await client.query(
+            `DELETE FROM tasker_gallery 
+             WHERE tasker_id = $1 
+             AND image_url = ANY(ARRAY[${placeholders}])`,
+            [existingProfile.id, ...dbImageUrls]
+          );
+
+          // Delete files from filesystem
+          for (const relativePath of dbImageUrls) {
+            const imagePath = path.join('public', 'images', relativePath);
+            console.log('Attempting to delete file:', imagePath);
+            
+            if (fs.existsSync(imagePath)) {
+              fs.unlinkSync(imagePath);
+              console.log('Successfully deleted file:', imagePath);
+            } else {
+              console.log('File not found:', imagePath);
+            }
+          }
+        }
+
+        // Update the main profile
+        const updatedProfile = await TaskerProfile.update(req.user.id, {
+          profile_photo: finalProfilePhoto,
+          description,
+          hourly_rate: parseFloat(hourly_rate),
+          categories,
+          cities,
+          availability
+        });
+
+        // Handle new gallery images if provided
+        if (req.files && (req.files.galleryImages || req.files.gallery)) {
+          const galleryFiles = [...(req.files.galleryImages || []), ...(req.files.gallery || [])];
+          for (const galleryImage of galleryFiles) {
+            const imageUrl = `images/gallery/${galleryImage.filename}`;
+            await TaskerProfile.addGalleryPhoto(existingProfile.id, imageUrl);
+          }
+        }
+
+        await client.query('COMMIT');
+
+        // Get the complete updated profile
+        const completeProfile = await TaskerProfile.getCompleteProfile(req.user.id);
+        res.json(completeProfile);
+
+      } catch (error) {
+        await client.query('ROLLBACK');
+        // Clean up any newly uploaded files in case of error
+        if (req.files) {
+          Object.values(req.files).flat().forEach(file => {
+            if (file.path) {
+              fs.unlink(file.path, (err) => {
+                if (err) console.error('Error deleting file:', err);
+              });
+            }
+          });
+        }
+        throw error;
+      } finally {
+        client.release();
+      }
+
     } catch (error) {
       console.error('Error updating tasker profile:', error);
       res.status(500).json({ 
@@ -370,7 +546,1013 @@ const taskerController = {
       console.error('Error getting tasker profile by ID:', error);
       res.status(500).json({ error: 'Failed to get tasker profile' });
     }
+  },
+
+  // Update tasker availability
+  async updateAvailability(req, res) {
+    try {
+      console.log('Updating availability for user:', req.user.id);
+      console.log('Request body:', JSON.stringify(req.body, null, 2));
+
+      // Check if user has a tasker profile
+      const existingProfile = await TaskerProfile.findByUserId(req.user.id);
+      if (!existingProfile) {
+        return res.status(404).json({
+          error: 'Tasker profile not found'
+        });
+      }
+
+      const { availability } = req.body;
+
+      // Validate availability data
+      if (!Array.isArray(availability)) {
+        return res.status(400).json({
+          error: 'Invalid availability format. Expected an array of availability slots.',
+          received: availability
+        });
+      }
+
+      // Validate each slot has date and time in correct format
+      for (const slot of availability) {
+        if (!slot || typeof slot !== 'object') {
+          return res.status(400).json({
+            error: 'Each availability slot must be an object',
+            invalidSlot: slot
+          });
+        }
+        
+        if (!slot.date || !slot.time) {
+          return res.status(400).json({
+            error: 'Each availability slot must have date and time properties',
+            invalidSlot: slot
+          });
+        }
+
+        // Validate date format (YYYY-MM-DD)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(slot.date)) {
+          return res.status(400).json({
+            error: 'Date must be in YYYY-MM-DD format',
+            invalidDate: slot.date
+          });
+        }
+
+        // Validate time format (HH:mm:ss)
+        if (!/^([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/.test(slot.time)) {
+          return res.status(400).json({
+            error: 'Time must be in HH:mm:ss format',
+            invalidTime: slot.time
+          });
+        }
+      }
+
+      // Use the TaskerProfile update method
+      const updatedProfile = await TaskerProfile.update(req.user.id, {
+        availability: availability
+      });
+
+      res.status(200).json(updatedProfile);
+
+    } catch (error) {
+      console.error('Error updating tasker availability:', error);
+      res.status(500).json({ 
+        error: 'Failed to update availability',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  },
+
+  // Send task request with gallery images
+  async sendTaskRequest(req, res) {
+    const client = await pool.connect();
+    try {
+      console.log('Receiving task request with files:', req.files);
+      console.log('Request body:', req.body);
+
+      // Parse the task request JSON data
+      let taskRequestData;
+      try {
+        taskRequestData = JSON.parse(req.body.taskData);
+        console.log('Parsed task request data:', taskRequestData);
+      } catch (error) {
+        console.error('Error parsing task request JSON:', error);
+        return res.status(400).json({
+          error: 'Invalid task request JSON',
+          details: error.message
+        });
+      }
+
+      const {
+        description,
+        city,
+        categories,
+        duration,
+        availability,
+        sender_id,
+        tasker_id  // This is now the tasker_profile.id
+      } = taskRequestData;
+
+      // Start a transaction
+      await client.query('BEGIN');
+      console.log('Transaction started');
+
+      // First get the user_id from tasker_profiles
+      const taskerProfileQuery = `
+        SELECT tp.user_id, u.is_tasker, tp.*, u.name, u.surname
+        FROM tasker_profiles tp
+        JOIN users u ON tp.user_id = u.id
+        WHERE tp.id = $1
+      `;
+      const taskerProfileResult = await client.query(taskerProfileQuery, [tasker_id]);
+      
+      if (taskerProfileResult.rows.length === 0) {
+        throw new Error('Tasker profile not found');
+      }
+
+      const taskerProfile = taskerProfileResult.rows[0];
+      const taskerUserId = taskerProfile.user_id;
+      const isTasker = taskerProfile.is_tasker;
+
+      if (!isTasker) {
+        throw new Error('Selected user is not a tasker');
+      }
+
+      // Check if sender exists
+      const senderQuery = `
+        SELECT 
+          u.id,
+          u.name,
+          u.surname,
+          COALESCE(tp.profile_photo, '') as profile_image
+        FROM users u
+        LEFT JOIN tasker_profiles tp ON u.id = tp.user_id
+        WHERE u.id = $1
+      `;
+      const senderResult = await client.query(senderQuery, [sender_id]);
+      
+      if (senderResult.rows.length === 0) {
+        throw new Error('Sender not found');
+      }
+      const sender = senderResult.rows[0];
+
+      // Create the task request
+      const taskRequestQuery = `
+        INSERT INTO task_requests (
+          description,
+          city_id,
+          duration,
+          sender_id,
+          tasker_id,
+          status,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+        RETURNING id, created_at
+      `;
+
+      const taskRequestResult = await client.query(taskRequestQuery, [
+        description,
+        city.id,
+        duration,
+        sender_id,
+        taskerUserId  // Use the user_id we got from tasker_profiles
+      ]);
+
+      const taskRequestId = taskRequestResult.rows[0].id;
+      console.log('Created task request with ID:', taskRequestId);
+
+      // Add categories
+      for (const category of categories) {
+        await client.query(
+          `INSERT INTO task_request_categories (task_request_id, category_id)
+           VALUES ($1, $2)`,
+          [taskRequestId, category.id]
+        );
+      }
+      console.log('Added categories');
+
+      // Add availability slot
+      const slot = availability[0]; // We only use the first slot
+      const formattedDate = new Date(slot.date).toISOString().split('T')[0];
+      await client.query(
+        `INSERT INTO task_request_availability (task_request_id, date, time_slot)
+         VALUES ($1, $2, $3)`,
+        [taskRequestId, formattedDate, slot.time]
+      );
+      console.log('Added availability');
+
+      // Handle gallery images if provided
+      let galleryUrls = [];
+      if (req.files?.galleryImages) {
+        for (const file of req.files.galleryImages) {
+          const imageUrl = `images/gallery/${file.filename}`;
+          await client.query(
+            `INSERT INTO task_request_gallery (task_request_id, image_url)
+             VALUES ($1, $2)`,
+            [taskRequestId, imageUrl]
+          );
+          galleryUrls.push(imageUrl);
+        }
+        console.log('Added gallery images');
+      }
+
+      // Remove notification message creation since it's not needed right now
+      await client.query('COMMIT');
+      console.log('Transaction committed successfully');
+
+      // Prepare the response object
+      const response = {
+        id: taskRequestId,
+        description,
+        city: {
+          id: city.id,
+          name: city.name,
+          created_at: city.created_at
+        },
+        categories: categories.map(cat => ({
+          id: cat.id,
+          name: cat.name,
+          description: cat.description,
+          image_url: cat.image_url,
+          created_at: cat.created_at
+        })),
+        duration,
+        availability: [{
+          date: formattedDate,
+          time: slot.time
+        }],
+        sender: {
+          id: sender.id,
+          name: sender.name,
+          surname: sender.surname,
+          profile_image: sender.profile_image
+        },
+        tasker: {
+          id: taskerProfile.id,
+          name: taskerProfile.name,
+          surname: taskerProfile.surname,
+          profile_photo: taskerProfile.profile_photo,
+          description: taskerProfile.description,
+          hourly_rate: taskerProfile.hourly_rate
+        },
+        gallery: galleryUrls,
+        status: 'pending',
+        created_at: taskRequestResult.rows[0].created_at
+      };
+
+      res.status(201).json(response);
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error in transaction, rolling back:', error);
+      
+      // Clean up any uploaded files in case of error
+      if (req.files?.galleryImages) {
+        req.files.galleryImages.forEach(file => {
+          if (file.path) {
+            fs.unlink(file.path, (err) => {
+              if (err) console.error('Error deleting file:', err);
+            });
+          }
+        });
+      }
+      
+      // Return appropriate error message with more detail
+      if (error.message.includes('not found')) {
+        return res.status(404).json({
+          error: error.message
+        });
+      } else if (error.message.includes('not a tasker')) {
+        return res.status(400).json({
+          error: error.message
+        });
+      }
+      
+      res.status(500).json({
+        error: 'Failed to send task request',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    } finally {
+      client.release();
+      console.log('Database client released');
+    }
+  },
+
+  // Get tasks sent by sender
+  async getTasksBySender(req, res) {
+    try {
+      const sender_id = req.user.id;
+      console.log('Getting tasks for sender ID:', sender_id);
+      
+      const client = await pool.connect();
+      try {
+        // Debug: Check if tables exist and have data
+        const tableChecks = await client.query(`
+          SELECT 
+            (SELECT COUNT(*) FROM task_requests) as total_requests,
+            (SELECT COUNT(*) FROM task_requests WHERE sender_id = $1) as user_requests,
+            (SELECT COUNT(*) FROM users WHERE id = $1) as user_exists
+        `, [sender_id]);
+        
+        console.log('Database status:', {
+          totalRequests: tableChecks.rows[0].total_requests,
+          userRequests: tableChecks.rows[0].user_requests,
+          userExists: tableChecks.rows[0].user_exists
+        });
+
+        // Get all tasks with related data
+        const query = `
+          SELECT 
+            tr.id,
+            tr.description,
+            tr.duration,
+            tr.status,
+            tr.created_at,
+            c.id as city_id,
+            c.name as city_name,
+            -- Sender details
+            s.id as sender_id,
+            s.name as sender_name,
+            s.surname as sender_surname,
+            COALESCE(sp.profile_photo, '') as sender_profile_image,
+            -- Tasker details
+            t.id as tasker_id,
+            t.name as tasker_name,
+            t.surname as tasker_surname,
+            COALESCE(tp.profile_photo, '') as tasker_profile_image,
+            -- Categories as JSON array
+            (
+              SELECT json_agg(json_build_object(
+                'id', cat.id,
+                'name', cat.name
+              ))
+              FROM task_request_categories trc
+              JOIN categories cat ON trc.category_id = cat.id
+              WHERE trc.task_request_id = tr.id
+            ) as categories,
+            -- Availability as JSON array
+            (
+              SELECT json_agg(json_build_object(
+                'date', to_char(tra.date, 'YYYY-MM-DD'),
+                'time', to_char(tra.time_slot, 'HH24:MI:SS')
+              ))
+              FROM task_request_availability tra
+              WHERE tra.task_request_id = tr.id
+            ) as availability,
+            -- Gallery as JSON array
+            (
+              SELECT json_agg(trg.image_url)
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
+            ) as gallery
+          FROM task_requests tr
+          JOIN cities c ON tr.city_id = c.id
+          JOIN users s ON tr.sender_id = s.id
+          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
+          JOIN users t ON tr.tasker_id = t.id
+          LEFT JOIN tasker_profiles tp ON t.id = tp.user_id
+          WHERE tr.sender_id = $1
+          ORDER BY tr.created_at DESC
+        `;
+
+        const result = await client.query(query, [sender_id]);
+        console.log(`Found ${result.rows.length} tasks for user ${sender_id}`);
+
+        // Format the response
+        const tasks = result.rows.map(row => ({
+          id: row.id,
+          description: row.description,
+          city: {
+            id: row.city_id,
+            name: row.city_name
+          },
+          categories: row.categories || [],
+          duration: row.duration,
+          availability: row.availability || [],
+          sender: {
+            id: row.sender_id,
+            name: row.sender_name,
+            surname: row.sender_surname,
+            profile_image: row.sender_profile_image
+          },
+          tasker: {
+            id: row.tasker_id,
+            name: row.tasker_name,
+            surname: row.tasker_surname,
+            profile_image: row.tasker_profile_image
+          },
+          gallery: row.gallery || [],
+          status: row.status,
+          created_at: row.created_at
+        }));
+
+        // Debug: Log sample task if available
+        if (tasks.length > 0) {
+          console.log('Sample task:', JSON.stringify(tasks[0], null, 2));
+        } else {
+          console.log('No tasks found for this user');
+        }
+
+        res.json(tasks);
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Error getting tasks by sender:', error);
+      res.status(500).json({
+        error: 'Failed to get tasks',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  },
+
+  // Get task requests received by tasker
+  async getTaskRequestsReceived(req, res) {
+    try {
+      const tasker_id = req.user.id;
+      console.log('Getting task requests for tasker ID:', tasker_id);
+      
+      const client = await pool.connect();
+      try {
+        // Debug: Check if tables exist and have data
+        const tableChecks = await client.query(`
+          SELECT 
+            (SELECT COUNT(*) FROM task_requests) as total_requests,
+            (SELECT COUNT(*) FROM task_requests WHERE tasker_id = $1) as tasker_requests,
+            (SELECT COUNT(*) FROM users WHERE id = $1) as user_exists
+        `, [tasker_id]);
+        
+        console.log('Database status:', {
+          totalRequests: tableChecks.rows[0].total_requests,
+          taskerRequests: tableChecks.rows[0].tasker_requests,
+          userExists: tableChecks.rows[0].user_exists
+        });
+
+        // Get all task requests with related data
+        const query = `
+          SELECT 
+            tr.id,
+            tr.description,
+            tr.duration,
+            tr.status,
+            tr.created_at,
+            c.id as city_id,
+            c.name as city_name,
+            -- Sender details
+            s.id as sender_id,
+            s.name as sender_name,
+            s.surname as sender_surname,
+            COALESCE(sp.profile_photo, '') as sender_profile_image,
+            -- Tasker details
+            t.id as tasker_id,
+            t.name as tasker_name,
+            t.surname as tasker_surname,
+            COALESCE(tp.profile_photo, '') as tasker_profile_image,
+            tp.hourly_rate,
+            tp.description as tasker_description,
+            -- Categories as JSON array
+            (
+              SELECT json_agg(json_build_object(
+                'id', cat.id,
+                'name', cat.name,
+                'description', cat.description,
+                'image_url', cat.image_url
+              ))
+              FROM task_request_categories trc
+              JOIN categories cat ON trc.category_id = cat.id
+              WHERE trc.task_request_id = tr.id
+            ) as categories,
+            -- Availability as JSON array
+            (
+              SELECT json_agg(json_build_object(
+                'date', to_char(tra.date, 'YYYY-MM-DD'),
+                'time', to_char(tra.time_slot, 'HH24:MI:SS')
+              ))
+              FROM task_request_availability tra
+              WHERE tra.task_request_id = tr.id
+            ) as availability,
+            -- Gallery as JSON array
+            (
+              SELECT json_agg(trg.image_url)
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
+            ) as gallery
+          FROM task_requests tr
+          JOIN cities c ON tr.city_id = c.id
+          JOIN users s ON tr.sender_id = s.id
+          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
+          JOIN users t ON tr.tasker_id = t.id
+          JOIN tasker_profiles tp ON t.id = tp.user_id
+          WHERE tr.tasker_id = $1
+          ORDER BY tr.created_at DESC
+        `;
+
+        const result = await client.query(query, [tasker_id]);
+        console.log(`Found ${result.rows.length} task requests for tasker ${tasker_id}`);
+
+        // Format the response
+        const taskRequests = result.rows.map(row => ({
+          id: row.id,
+          description: row.description,
+          city: {
+            id: row.city_id,
+            name: row.city_name
+          },
+          categories: row.categories || [],
+          duration: row.duration,
+          availability: row.availability || [],
+          sender: {
+            id: row.sender_id,
+            name: row.sender_name,
+            surname: row.sender_surname,
+            profile_image: row.sender_profile_image
+          },
+          tasker: {
+            id: row.tasker_id,
+            name: row.tasker_name,
+            surname: row.tasker_surname,
+            profile_photo: row.tasker_profile_image,
+            description: row.tasker_description,
+            hourly_rate: row.hourly_rate
+          },
+          gallery: row.gallery || [],
+          status: row.status,
+          created_at: row.created_at
+        }));
+
+        // Debug: Log sample task request if available
+        if (taskRequests.length > 0) {
+          console.log('Sample task request:', JSON.stringify(taskRequests[0], null, 2));
+        } else {
+          console.log('No task requests found for this tasker');
+        }
+
+        res.json(taskRequests);
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Error getting task requests for tasker:', error);
+      res.status(500).json({
+        error: 'Failed to get task requests',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  },
+
+  // Get specific task request received by tasker
+  async getTaskRequestById(req, res) {
+    try {
+      const tasker_id = req.user.id;
+      const task_id = req.params.id;
+      console.log('Getting task request ID:', task_id, 'for tasker ID:', tasker_id);
+      
+      const client = await pool.connect();
+      try {
+        // Get task request with related data
+        const query = `
+          SELECT 
+            tr.id,
+            tr.description,
+            tr.duration,
+            tr.status,
+            tr.created_at,
+            c.id as city_id,
+            c.name as city_name,
+            -- Sender details
+            s.id as sender_id,
+            s.name as sender_name,
+            s.surname as sender_surname,
+            COALESCE(sp.profile_photo, '') as sender_profile_image,
+            -- Tasker details
+            t.id as tasker_id,
+            t.name as tasker_name,
+            t.surname as tasker_surname,
+            COALESCE(tp.profile_photo, '') as tasker_profile_image,
+            tp.hourly_rate,
+            tp.description as tasker_description,
+            -- Categories as JSON array
+            (
+              SELECT json_agg(json_build_object(
+                'id', cat.id,
+                'name', cat.name,
+                'description', cat.description,
+                'image_url', cat.image_url
+              ))
+              FROM task_request_categories trc
+              JOIN categories cat ON trc.category_id = cat.id
+              WHERE trc.task_request_id = tr.id
+            ) as categories,
+            -- Availability as JSON array
+            (
+              SELECT json_agg(json_build_object(
+                'date', to_char(tra.date, 'YYYY-MM-DD'),
+                'time', to_char(tra.time_slot, 'HH24:MI:SS')
+              ))
+              FROM task_request_availability tra
+              WHERE tra.task_request_id = tr.id
+            ) as availability,
+            -- Gallery as JSON array
+            (
+              SELECT json_agg(trg.image_url)
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
+            ) as gallery
+          FROM task_requests tr
+          JOIN cities c ON tr.city_id = c.id
+          JOIN users s ON tr.sender_id = s.id
+          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
+          JOIN users t ON tr.tasker_id = t.id
+          JOIN tasker_profiles tp ON t.id = tp.user_id
+          WHERE tr.tasker_id = $1 AND tr.id = $2
+        `;
+
+        const result = await client.query(query, [tasker_id, task_id]);
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Task request not found or you do not have permission to view it'
+          });
+        }
+
+        // Format the response
+        const row = result.rows[0];
+        const taskRequest = {
+          id: row.id,
+          description: row.description,
+          city: {
+            id: row.city_id,
+            name: row.city_name
+          },
+          categories: row.categories || [],
+          duration: row.duration,
+          availability: row.availability || [],
+          sender: {
+            id: row.sender_id,
+            name: row.sender_name,
+            surname: row.sender_surname,
+            profile_image: row.sender_profile_image
+          },
+          tasker: {
+            id: row.tasker_id,
+            name: row.tasker_name,
+            surname: row.tasker_surname,
+            profile_photo: row.tasker_profile_image,
+            description: row.tasker_description,
+            hourly_rate: row.hourly_rate
+          },
+          gallery: row.gallery || [],
+          status: row.status,
+          created_at: row.created_at
+        };
+
+        console.log('Found task request:', JSON.stringify(taskRequest, null, 2));
+        res.json(taskRequest);
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Error getting task request by ID:', error);
+      res.status(500).json({
+        error: 'Failed to get task request',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  },
+
+  // Update task request status
+  async updateTaskRequestStatus(req, res) {
+    try {
+      const user_id = req.user.id;
+      const task_id = req.params.id;
+      const { status } = req.body;
+      
+      console.log('Updating task request ID:', task_id, 'for user ID:', user_id, 'with status:', status);
+      
+      if (!status) {
+        return res.status(400).json({
+          error: 'Status is required in request body'
+        });
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // First get the tasker's profile
+        const taskerProfileResult = await client.query(
+          'SELECT id FROM tasker_profiles WHERE user_id = $1',
+          [user_id]
+        );
+
+        if (taskerProfileResult.rows.length === 0) {
+          return res.status(403).json({
+            error: 'Tasker profile not found'
+          });
+        }
+
+        const tasker_profile_id = taskerProfileResult.rows[0].id;
+
+        // Map 'Accepted' to 'Waiting for Payment'
+        const newStatus = status === 'Accepted' ? 'Waiting for Payment' : status;
+        
+        // Update the status using tasker_profile_id
+        const updateResult = await client.query(`
+          UPDATE task_requests
+          SET status = $1 
+          WHERE id = $2 
+          AND tasker_id = $3
+          RETURNING id
+        `, [newStatus, task_id, user_id]);
+
+        if (updateResult.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Task request not found or you do not have permission to update it'
+          });
+        }
+
+        // Get the updated task request
+        const query = `
+          SELECT 
+            tr.id,
+            tr.description,
+            tr.duration,
+            tr.status,
+            tr.created_at,
+            c.id as city_id,
+            c.name as city_name,
+            -- Sender details
+            s.id as sender_id,
+            s.name as sender_name,
+            s.surname as sender_surname,
+            COALESCE(sp.profile_photo, '') as sender_profile_image,
+            -- Tasker details
+            t.id as tasker_id,
+            t.name as tasker_name,
+            t.surname as tasker_surname,
+            COALESCE(tp.profile_photo, '') as tasker_profile_image,
+            tp.hourly_rate,
+            tp.description as tasker_description,
+            -- Categories as JSON array
+            (
+              SELECT json_agg(json_build_object(
+                'id', cat.id,
+                'name', cat.name,
+                'description', cat.description,
+                'image_url', cat.image_url
+              ))
+              FROM task_request_categories trc
+              JOIN categories cat ON trc.category_id = cat.id
+              WHERE trc.task_request_id = tr.id
+            ) as categories,
+            -- Availability as JSON array
+            (
+              SELECT json_agg(json_build_object(
+                'date', to_char(tra.date, 'YYYY-MM-DD'),
+                'time', to_char(tra.time_slot, 'HH24:MI:SS')
+              ))
+              FROM task_request_availability tra
+              WHERE tra.task_request_id = tr.id
+            ) as availability,
+            -- Gallery as JSON array
+            (
+              SELECT json_agg(trg.image_url)
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
+            ) as gallery
+          FROM task_requests tr
+          JOIN cities c ON tr.city_id = c.id
+          JOIN users s ON tr.sender_id = s.id
+          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
+          JOIN users t ON tr.tasker_id = t.id
+          JOIN tasker_profiles tp ON t.id = tp.user_id
+          WHERE tr.id = $1
+        `;
+
+        const result = await client.query(query, [task_id]);
+        
+        await client.query('COMMIT');
+
+        // Format the response
+        const row = result.rows[0];
+        const taskRequest = {
+          id: row.id,
+          description: row.description,
+          city: {
+            id: row.city_id,
+            name: row.city_name
+          },
+          categories: row.categories || [],
+          duration: row.duration,
+          availability: row.availability || [],
+          sender: {
+            id: row.sender_id,
+            name: row.sender_name,
+            surname: row.sender_surname,
+            profile_image: row.sender_profile_image
+          },
+          tasker: {
+            id: row.tasker_id,
+            name: row.tasker_name,
+            surname: row.tasker_surname,
+            profile_photo: row.tasker_profile_image,
+            description: row.tasker_description,
+            hourly_rate: row.hourly_rate
+          },
+          gallery: row.gallery || [],
+          status: row.status,
+          created_at: row.created_at
+        };
+
+        console.log('Updated task request:', JSON.stringify(taskRequest, null, 2));
+        res.json(taskRequest);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Error updating task request status:', error);
+      res.status(500).json({
+        error: 'Failed to update task request status',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  },
+
+  // Get specific task by ID for sender
+  async getTaskById(req, res) {
+    try {
+      const sender_id = req.user.id;
+      const task_id = req.params.id;
+      console.log('Getting task ID:', task_id, 'for sender ID:', sender_id);
+      
+      const client = await pool.connect();
+      try {
+        // Get task with related data
+        const query = `
+          SELECT 
+            tr.id,
+            tr.description,
+            tr.duration,
+            tr.status,
+            tr.created_at,
+            c.id as city_id,
+            c.name as city_name,
+            -- Sender details
+            s.id as sender_id,
+            s.name as sender_name,
+            s.surname as sender_surname,
+            COALESCE(sp.profile_photo, '') as sender_profile_image,
+            -- Tasker details
+            t.id as tasker_id,
+            t.name as tasker_name,
+            t.surname as tasker_surname,
+            COALESCE(tp.profile_photo, '') as tasker_profile_image,
+            tp.hourly_rate,
+            tp.description as tasker_description,
+            -- Categories as JSON array
+            (
+              SELECT json_agg(json_build_object(
+                'id', cat.id,
+                'name', cat.name,
+                'description', cat.description,
+                'image_url', cat.image_url
+              ))
+              FROM task_request_categories trc
+              JOIN categories cat ON trc.category_id = cat.id
+              WHERE trc.task_request_id = tr.id
+            ) as categories,
+            -- Availability as JSON array
+            (
+              SELECT json_agg(json_build_object(
+                'date', to_char(tra.date, 'YYYY-MM-DD'),
+                'time', to_char(tra.time_slot, 'HH24:MI:SS')
+              ))
+              FROM task_request_availability tra
+              WHERE tra.task_request_id = tr.id
+            ) as availability,
+            -- Gallery as JSON array
+            (
+              SELECT json_agg(trg.image_url)
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
+            ) as gallery
+          FROM task_requests tr
+          JOIN cities c ON tr.city_id = c.id
+          JOIN users s ON tr.sender_id = s.id
+          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
+          JOIN users t ON tr.tasker_id = t.id
+          JOIN tasker_profiles tp ON t.id = tp.user_id
+          WHERE tr.sender_id = $1 AND tr.id = $2
+        `;
+
+        const result = await client.query(query, [sender_id, task_id]);
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Task not found or you do not have permission to view it'
+          });
+        }
+
+        // Format the response
+        const row = result.rows[0];
+        const task = {
+          id: row.id,
+          description: row.description,
+          city: {
+            id: row.city_id,
+            name: row.city_name
+          },
+          categories: row.categories || [],
+          duration: row.duration,
+          availability: row.availability || [],
+          sender: {
+            id: row.sender_id,
+            name: row.sender_name,
+            surname: row.sender_surname,
+            profile_image: row.sender_profile_image
+          },
+          tasker: {
+            id: row.tasker_id,
+            name: row.tasker_name,
+            surname: row.tasker_surname,
+            profile_photo: row.tasker_profile_image,
+            description: row.tasker_description,
+            hourly_rate: row.hourly_rate
+          },
+          gallery: row.gallery || [],
+          status: row.status,
+          created_at: row.created_at
+        };
+
+        console.log('Found task:', JSON.stringify(task, null, 2));
+        res.json(task);
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Error getting task by ID:', error);
+      res.status(500).json({
+        error: 'Failed to get task',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  },
+
+  // Test endpoint to insert sample data
+  async insertTestData(req, res) {
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Insert a test task
+        const taskResult = await client.query(`
+          INSERT INTO task_requests (
+            description, 
+            city_id, 
+            duration, 
+            sender_id, 
+            tasker_id, 
+            status
+          ) VALUES ($1, $2, $3, $4, $5, $6) 
+          RETURNING id
+        `, ['Test cleaning task', 1, '2 hours', 8, 1, 'pending']);
+
+        const taskId = taskResult.rows[0].id;
+
+        // Insert test category
+        await client.query(`
+          INSERT INTO task_request_categories (task_request_id, category_id)
+          VALUES ($1, $2)
+        `, [taskId, 1]);
+
+        // Insert test availability
+        await client.query(`
+          INSERT INTO task_request_availability (task_request_id, date, time_slot)
+          VALUES ($1, $2, $3)
+        `, [taskId, '2024-03-20', '09:00:00']);
+
+        await client.query('COMMIT');
+        res.json({ message: 'Test data inserted successfully', taskId });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Error inserting test data:', error);
+      res.status(500).json({
+        error: 'Failed to insert test data',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
   }
 };
 
-module.exports = taskerController; 
+module.exports = {
+  ...taskerController,
+  uploadFields
+}; 

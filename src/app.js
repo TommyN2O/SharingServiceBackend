@@ -16,9 +16,16 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cors);
 app.use(requestLogger);
 
-// Serve static files from the Images directory
-app.use('/images/categories', express.static(path.join(__dirname, '../../Images/Categorys')));
-app.use('/images/profiles', express.static(path.join(__dirname, '../../Images/profile_user')));
+// Serve static files from the public/images directory
+app.use('/images', express.static(path.join(__dirname, '../public/images')));
+
+// Add a route to check image paths
+app.get('/check-image-paths', (req, res) => {
+  const paths = {
+    imagesDir: path.join(__dirname, '../public/images')
+  };
+  res.json({ paths });
+});
 
 // Initialize database tables
 async function initializeDatabase() {
@@ -63,8 +70,7 @@ async function initializeDatabase() {
 
     // Create tasker_cities table
     await pool.query(`
-      DROP TABLE IF EXISTS tasker_cities CASCADE;
-      CREATE TABLE tasker_cities (
+      CREATE TABLE IF NOT EXISTS tasker_cities (
         tasker_id INTEGER REFERENCES tasker_profiles(id) ON DELETE CASCADE,
         city_id INTEGER REFERENCES cities(id) ON DELETE CASCADE,
         PRIMARY KEY (tasker_id, city_id)
