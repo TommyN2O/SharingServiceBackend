@@ -204,6 +204,7 @@ class TaskerProfile extends BaseModel {
       SELECT 
         tp.id,
         CASE 
+          WHEN tp.profile_photo IS NULL THEN NULL
           WHEN tp.profile_photo LIKE 'http%' THEN tp.profile_photo
           WHEN tp.profile_photo LIKE 'images/%' THEN tp.profile_photo
           ELSE CONCAT('images/', tp.profile_photo)
@@ -514,39 +515,24 @@ class TaskerProfile extends BaseModel {
       }
 
       // 3. Update cities if provided
-      if (Array.isArray(cities) && cities.length > 0) {
-        // Validate all city IDs first
-        const cityIds = cities.map(city => typeof city === 'object' ? city.id : city);
-        const validCities = await client.query(
-          'SELECT id FROM cities WHERE id = ANY($1)',
-          [cityIds]
-        );
-
-        // Only proceed if all cities are valid
-        if (validCities.rows.length === cityIds.length) {
-          // Delete existing cities
-          await client.query('DELETE FROM tasker_cities WHERE tasker_id = $1', [taskerProfile.id]);
-          
-          // Add new cities
-          for (const cityId of cityIds) {
-            await client.query(
-              'INSERT INTO tasker_cities (tasker_id, city_id) VALUES ($1, $2)',
-              [taskerProfile.id, cityId]
-            );
-          }
-        } else {
-          throw new Error('One or more invalid city IDs provided');
+      if (Array.isArray(cities)) {
+        // Delete existing cities
+        await client.query('DELETE FROM tasker_cities WHERE tasker_id = $1', [taskerProfile.id]);
+        
+        // Add new cities
+        for (const city of cities) {
+          const cityId = typeof city === 'object' ? city.id : city;
+          await client.query(
+            'INSERT INTO tasker_cities (tasker_id, city_id) VALUES ($1, $2)',
+            [taskerProfile.id, cityId]
+          );
         }
       }
 
-      // 4. Update availability if provided
-      if (availability) {
+      // 4. Update availability if provided and not empty
+      if (Array.isArray(availability) && availability.length > 0) {
         console.log('Raw availability data:', JSON.stringify(availability, null, 2));
         
-        // Ensure availability is an array
-        const availabilityArray = Array.isArray(availability) ? availability : [availability];
-        console.log('Availability array:', JSON.stringify(availabilityArray, null, 2));
-
         // Delete existing availability
         const deleteResult = await client.query('DELETE FROM tasker_availability WHERE tasker_id = $1', [taskerProfile.id]);
         console.log('Deleted existing availability:', {
@@ -556,14 +542,13 @@ class TaskerProfile extends BaseModel {
         
         // Add new availability
         const insertionErrors = [];
-        for (const slot of availabilityArray) {
+        for (const slot of availability) {
           try {
             let dateStr, timeStr;
             
             if (typeof slot === 'string') {
               // Handle string format "YYYY-MM-DD HH:mm:ss"
               [dateStr, timeStr] = slot.split(' ');
-              console.log('Split date and time:', { dateStr, timeStr });
             } else if (slot.date && slot.time) {
               // Handle object format from Kotlin AvailabilitySlot
               dateStr = slot.date;
@@ -606,20 +591,10 @@ class TaskerProfile extends BaseModel {
               }
             }
 
-            console.log('Inserting availability:', {
-              tasker_id: taskerProfile.id,
-              date: formattedDate,
-              time: formattedTime
-            });
-
-            const insertResult = await client.query(
+            await client.query(
               'INSERT INTO tasker_availability (tasker_id, date, time_slot) VALUES ($1, $2, $3::time)',
               [taskerProfile.id, formattedDate, formattedTime]
             );
-            
-            console.log('Successfully inserted availability:', {
-              rowCount: insertResult.rowCount
-            });
           } catch (error) {
             console.error('Error inserting availability:', {
               slot,
@@ -629,21 +604,23 @@ class TaskerProfile extends BaseModel {
           }
         }
 
-        // If all insertions failed, throw an error
-        if (insertionErrors.length === availabilityArray.length) {
-          throw new Error('Failed to insert any availability slots: ' + JSON.stringify(insertionErrors));
+        // Log any errors that occurred during insertion
+        if (insertionErrors.length > 0) {
+          console.warn('Some availability slots failed to insert:', insertionErrors);
         }
+      } else {
+        // If availability is empty array or not provided, just clear existing availability
+        await client.query('DELETE FROM tasker_availability WHERE tasker_id = $1', [taskerProfile.id]);
+        console.log('Cleared existing availability as no new slots were provided');
       }
 
       // Get the updated profile with all related data
       const updatedProfile = await this.getCompleteProfile(user_id);
-      console.log('Final updated profile availability:', JSON.stringify(updatedProfile.availability, null, 2));
       
       await client.query('COMMIT');
       return updatedProfile;
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Error in update:', error);
       throw error;
     } finally {
       client.release();
@@ -656,6 +633,7 @@ class TaskerProfile extends BaseModel {
       SELECT 
         tp.id,
         CASE 
+          WHEN tp.profile_photo IS NULL THEN NULL
           WHEN tp.profile_photo LIKE 'http%' THEN tp.profile_photo
           WHEN tp.profile_photo LIKE 'images/%' THEN tp.profile_photo
           ELSE CONCAT('images/', tp.profile_photo)
@@ -737,6 +715,7 @@ class TaskerProfile extends BaseModel {
       SELECT 
         tp.id,
         CASE 
+          WHEN tp.profile_photo IS NULL THEN NULL
           WHEN tp.profile_photo LIKE 'http%' THEN tp.profile_photo
           WHEN tp.profile_photo LIKE 'images/%' THEN tp.profile_photo
           ELSE CONCAT('images/', tp.profile_photo)

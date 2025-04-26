@@ -7,6 +7,9 @@ const Category = require('./models/Category');
 const TaskerProfile = require('./models/TaskerProfile');
 const pool = require('./config/database');
 const City = require('./models/City');
+const authRoutes = require('./routes/authRoutes');
+const taskerRoutes = require('./routes/taskerRoutes');
+const messageRoutes = require('./routes/messageRoutes');
 
 const app = express();
 
@@ -193,6 +196,9 @@ app.get('/', (req, res) => {
 // Routes
 app.use('/api', routes);
 app.use('/api/cities', require('./routes/cityRoutes'));
+app.use('/api/auth', authRoutes);
+app.use('/api/tasker', taskerRoutes);
+app.use('/api/messages', messageRoutes);
 
 // Initialize Lithuanian cities
 app.get('/api/init-cities', async (req, res) => {

@@ -1,18 +1,38 @@
 const express = require('express');
 const router = express.Router();
-const messageController = require('../controllers/messageController');
 const auth = require('../middleware/auth');
+const {
+  getConversations,
+  getMessages,
+  sendMessage,
+  getChat,
+  createChat,
+  getChatMessages,
+  getUserChats
+} = require('../controllers/messageController');
 
-// All routes require authentication
+// Apply authentication middleware to all routes
 router.use(auth);
 
-// Get conversations and messages
-router.get('/conversations', messageController.getConversations);
-router.get('/conversation/:userId', messageController.getConversation);
+// Get all user's chats
+router.get('/chats', getUserChats);
 
-// Manage messages
-router.post('/', messageController.sendMessage);
-router.put('/read/:senderId', messageController.markAsRead);
-router.delete('/:id', messageController.deleteMessage);
+// Get all conversations for the authenticated user
+router.get('/conversations', getConversations);
+
+// Create new chat
+router.post('/chat', createChat);
+
+// Get chat details between two users
+router.get('/chat/:userId', getChat);
+
+// Get messages for a specific chat
+router.get('/chat/:chatId/messages', getChatMessages);
+
+// Get messages between authenticated user and another user
+router.get('/messages/:userId', getMessages);
+
+// Send a message
+router.post('/send', sendMessage);
 
 module.exports = router; 

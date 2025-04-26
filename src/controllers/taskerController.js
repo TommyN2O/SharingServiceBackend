@@ -688,7 +688,7 @@ const taskerController = {
         WHERE u.id = $1
       `;
       const senderResult = await client.query(senderQuery, [sender_id]);
-      
+
       if (senderResult.rows.length === 0) {
         throw new Error('Sender not found');
       }

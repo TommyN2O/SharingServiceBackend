@@ -48,6 +48,7 @@ CREATE TABLE tasker_profiles (
     description TEXT,
     hourly_rate DECIMAL(10,2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id)
 );
 
