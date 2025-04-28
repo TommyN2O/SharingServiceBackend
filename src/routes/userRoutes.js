@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
 const auth = require('../middleware/auth');
+const { uploadFields } = require('../controllers/taskerController');
 
 // Public routes (no auth required)
 router.post('/register', userController.register);
@@ -14,7 +15,7 @@ router.use(auth);
 
 // Profile routes
 router.get('/profile', userController.getProfile);
-router.put('/profile', userController.updateProfile);
+router.put('/profile', uploadFields, userController.updateUserProfile);
 
 // Dashboard and other routes
 router.get('/dashboard', userController.getDashboard);

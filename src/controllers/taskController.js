@@ -2,6 +2,7 @@ const CustomerRequest = require('../models/CustomerRequest');
 const PlannedTask = require('../models/PlannedTask');
 const Message = require('../models/Message');
 const Review = require('../models/Review');
+const pool = require('../config/database');
 
 const taskController = {
   // Create a new customer request
@@ -189,6 +190,34 @@ const taskController = {
       await TaskerProfile.updateRating(task.tasker_id, rating);
 
       res.status(201).json(newReview);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  // Get completed tasks
+  async getCompletedTasks(req, res) {
+    try {
+      const query = `
+        SELECT 
+          pt.*,
+          u.name as customer_name,
+          t.name as tasker_name,
+          cr.description as request_description,
+          cr.budget
+        FROM planned_tasks pt
+        JOIN users u ON pt.customer_id = u.id
+        JOIN users t ON pt.tasker_id = t.id
+        JOIN customer_requests cr ON pt.request_id = cr.id
+        WHERE pt.status = 'completed'
+        ORDER BY pt.completed_at DESC
+      `;
+
+      const result = await pool.query(query);
+      
+      res.json({
+        tasks: result.rows
+      });
     } catch (error) {
       res.status(400).json({ error: error.message });
     }

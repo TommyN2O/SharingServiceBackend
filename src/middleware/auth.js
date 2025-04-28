@@ -4,6 +4,7 @@ const User = require('../models/User');
 const auth = async (req, res, next) => {
   try {
     const authHeader = req.header('Authorization');
+    console.log('Auth header:', authHeader);
     
     if (!authHeader) {
       return res.status(401).json({ error: 'No token provided' });
@@ -14,6 +15,7 @@ const auth = async (req, res, next) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
+    console.log('Token:', token);
     
     if (!token) {
       return res.status(401).json({ error: 'No token provided' });
@@ -22,9 +24,11 @@ const auth = async (req, res, next) => {
     try {
       // Use the fixed secret for verification
       const decoded = jwt.verify(token, 'sharing_service_secret_key_2024');
+      console.log('Decoded token:', decoded);
       
       // Get user to verify token matches stored token
       const user = await User.getById(decoded.id);
+      console.log('User from DB:', user);
 
       if (!user || user.current_token !== token) {
         return res.status(401).json({ error: 'Token is invalid or expired' });
@@ -35,9 +39,11 @@ const auth = async (req, res, next) => {
         email: decoded.email,
         isTasker: decoded.isTasker || false
       };
+      console.log('Set user in request:', req.user);
 
       next();
     } catch (error) {
+      console.error('Token verification error:', error);
       if (error.name === 'TokenExpiredError') {
         return res.status(401).json({ error: 'Token has expired' });
       }

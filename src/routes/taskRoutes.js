@@ -12,6 +12,7 @@ router.post('/offers/:offerId/decline', taskController.declineOffer);
 
 // Task management routes
 router.post('/planned-tasks/:taskId/accept', taskController.acceptPlannedTask);
+router.get('/completed', taskController.getCompletedTasks);
 
 // Review routes
 router.post('/tasks/:taskId/review', taskController.createReview);

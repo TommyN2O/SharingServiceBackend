@@ -21,7 +21,11 @@ const {
   getTaskRequestById,
   insertTestData,
   updateTaskRequestStatus,
-  getTaskById
+  getTaskById,
+  getPaidTasksSent,
+  getPaidTasksReceived,
+  getSentCompletedTasks,
+  getReceivedCompletedTasks
 } = require('../controllers/taskerController');
 
 // Apply authentication middleware to all routes
@@ -36,24 +40,32 @@ router.delete('/profile', deleteProfile);
 // Task management routes
 router.get('/tasks', getTasks);
 router.get('/tasks/available', getAvailableTasks);
+
+// Task request routes - specific routes first
+router.get('/tasks/sent/completed', getSentCompletedTasks);
+router.get('/tasks/received/completed', getReceivedCompletedTasks);
+router.get('/tasks/sent/paid', getPaidTasksSent);
+router.get('/tasks/received/paid', getPaidTasksReceived);
+router.get('/tasks/sent', getTasksBySender);
+router.get('/tasks/received', getTaskRequestsReceived);
+
+// Task request routes - parameterized routes last
+router.get('/tasks/sent/:id', getTaskById);
+router.get('/tasks/received/:id', getTaskRequestById);
 router.post('/tasks/:taskId/offer', sendOffer);
 router.post('/tasks/:taskId/accept', acceptTask);
 router.put('/tasks/:taskId/status', updateTaskStatus);
-
-// Task request routes
-router.post('/send-request', uploadFields, sendTaskRequest);
-router.get('/tasks/sent', getTasksBySender);
-router.get('/tasks/sent/:id', getTaskById);
-router.get('/tasks/received', getTaskRequestsReceived);
-router.get('/tasks/received/:id', getTaskRequestById);
 router.put('/tasks/received/:id/status', updateTaskRequestStatus);
+
+// Task creation route
+router.post('/send-request', uploadFields, sendTaskRequest);
 
 // Profile listing routes
 router.get('/profiles', getAllProfiles);
 router.get('/profiles/:id', getProfileById);
 
 // Availability management
-router.put('/profile/availability', updateAvailability);
+router.put('/availability', updateAvailability);
 
 // Test endpoints
 router.post('/test/data', insertTestData);

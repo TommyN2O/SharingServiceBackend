@@ -123,8 +123,8 @@ class Message extends BaseModel {
   async getConversation(userId1, userId2) {
     const query = `
       SELECT m.*, 
-             s.name as sender_name, s.surname as sender_surname,
-             r.name as receiver_name, r.surname as receiver_surname
+             s.name as sender_name, s.surname as sender_surname, s.profile_photo as sender_profile_photo,
+             r.name as receiver_name, r.surname as receiver_surname, r.profile_photo as receiver_profile_photo
       FROM messages m
       JOIN users s ON m.sender_id = s.id
       JOIN users r ON m.receiver_id = r.id
@@ -139,7 +139,7 @@ class Message extends BaseModel {
   async getUnreadMessages(userId) {
     const query = `
       SELECT m.*, 
-             s.name as sender_name, s.surname as sender_surname
+             s.name as sender_name, s.surname as sender_surname, s.profile_photo as sender_profile_photo
       FROM messages m
       JOIN users s ON m.sender_id = s.id
       WHERE m.receiver_id = $1 AND m.seen = false
@@ -185,7 +185,8 @@ class Message extends BaseModel {
       )
       SELECT lm.*,
              u.name as other_user_name,
-             u.surname as other_user_surname
+             u.surname as other_user_surname,
+             u.profile_photo as other_user_profile_photo
       FROM last_messages lm
       JOIN users u ON lm.other_user_id = u.id
       ORDER BY lm.created_at DESC

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Payment Successful</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #f0f2f5;
+    }
+    .container {
+      text-align: center;
+      padding: 20px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+  <script type="text/javascript">
+    window.onload = function() {
+      // The task_id is injected directly into the JavaScript
+      const taskId = 'TASK_ID_PLACEHOLDER';
+      console.log('Redirecting with task_id:', taskId);
+      
+      // Try to open the app with task_id
+      window.location.href = `sharingapp://payment-success?task_id=${taskId}`;
+      
+      // Fallback if app not installed
+      setTimeout(function() {
+        // Replace with your app's store URL or website
+        // window.location.href = 'https://play.google.com/store/apps/details?id=com.sharingapp';
+      }, 3000);
+    }
+  </script>
+</head>
+<body>
+  <div class="container">
+    <h1>Payment Successful!</h1>
+    <div class="spinner"></div>
+    <p>Redirecting you to the app...</p>
+  </div>
+</body>
+</html> 

@@ -682,9 +682,10 @@ const taskerController = {
           u.id,
           u.name,
           u.surname,
-          COALESCE(tp.profile_photo, '') as profile_image
+          COALESCE(s.profile_photo, '') as sender_profile_photo
         FROM users u
         LEFT JOIN tasker_profiles tp ON u.id = tp.user_id
+        LEFT JOIN users s ON u.id = s.user_id
         WHERE u.id = $1
       `;
       const senderResult = await client.query(senderQuery, [sender_id]);
@@ -784,7 +785,7 @@ const taskerController = {
           id: sender.id,
           name: sender.name,
           surname: sender.surname,
-          profile_image: sender.profile_image
+          profile_photo: sender.sender_profile_photo
         },
         tasker: {
           id: taskerProfile.id,
@@ -873,12 +874,14 @@ const taskerController = {
             s.id as sender_id,
             s.name as sender_name,
             s.surname as sender_surname,
-            COALESCE(sp.profile_photo, '') as sender_profile_image,
+            COALESCE(s.profile_photo, '') as sender_profile_photo,
             -- Tasker details
             t.id as tasker_id,
             t.name as tasker_name,
             t.surname as tasker_surname,
-            COALESCE(tp.profile_photo, '') as tasker_profile_image,
+            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
+            tp.description as tasker_description,
+            tp.hourly_rate as tasker_hourly_rate,
             -- Categories as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -907,7 +910,6 @@ const taskerController = {
           FROM task_requests tr
           JOIN cities c ON tr.city_id = c.id
           JOIN users s ON tr.sender_id = s.id
-          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
           JOIN users t ON tr.tasker_id = t.id
           LEFT JOIN tasker_profiles tp ON t.id = tp.user_id
           WHERE tr.sender_id = $1
@@ -932,13 +934,15 @@ const taskerController = {
             id: row.sender_id,
             name: row.sender_name,
             surname: row.sender_surname,
-            profile_image: row.sender_profile_image
+            profile_photo: row.sender_profile_photo
           },
           tasker: {
             id: row.tasker_id,
             name: row.tasker_name,
             surname: row.tasker_surname,
-            profile_image: row.tasker_profile_image
+            profile_photo: row.tasker_profile_photo,
+            description: row.tasker_description,
+            hourly_rate: row.tasker_hourly_rate
           },
           gallery: row.gallery || [],
           status: row.status,
@@ -1001,14 +1005,14 @@ const taskerController = {
             s.id as sender_id,
             s.name as sender_name,
             s.surname as sender_surname,
-            COALESCE(sp.profile_photo, '') as sender_profile_image,
+            COALESCE(s.profile_photo, '') as sender_profile_photo,
             -- Tasker details
             t.id as tasker_id,
             t.name as tasker_name,
             t.surname as tasker_surname,
-            COALESCE(tp.profile_photo, '') as tasker_profile_image,
-            tp.hourly_rate,
+            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
+            tp.hourly_rate as tasker_hourly_rate,
             -- Categories as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -1039,7 +1043,6 @@ const taskerController = {
           FROM task_requests tr
           JOIN cities c ON tr.city_id = c.id
           JOIN users s ON tr.sender_id = s.id
-          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
           JOIN users t ON tr.tasker_id = t.id
           JOIN tasker_profiles tp ON t.id = tp.user_id
           WHERE tr.tasker_id = $1
@@ -1064,15 +1067,15 @@ const taskerController = {
             id: row.sender_id,
             name: row.sender_name,
             surname: row.sender_surname,
-            profile_image: row.sender_profile_image
+            profile_photo: row.sender_profile_photo
           },
           tasker: {
             id: row.tasker_id,
             name: row.tasker_name,
             surname: row.tasker_surname,
-            profile_photo: row.tasker_profile_image,
+            profile_photo: row.tasker_profile_photo,
             description: row.tasker_description,
-            hourly_rate: row.hourly_rate
+            hourly_rate: row.tasker_hourly_rate
           },
           gallery: row.gallery || [],
           status: row.status,
@@ -1122,14 +1125,14 @@ const taskerController = {
             s.id as sender_id,
             s.name as sender_name,
             s.surname as sender_surname,
-            COALESCE(sp.profile_photo, '') as sender_profile_image,
+            COALESCE(s.profile_photo, '') as sender_profile_photo,
             -- Tasker details
             t.id as tasker_id,
             t.name as tasker_name,
             t.surname as tasker_surname,
-            COALESCE(tp.profile_photo, '') as tasker_profile_image,
-            tp.hourly_rate,
+            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
+            tp.hourly_rate as tasker_hourly_rate,
             -- Categories as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -1160,7 +1163,6 @@ const taskerController = {
           FROM task_requests tr
           JOIN cities c ON tr.city_id = c.id
           JOIN users s ON tr.sender_id = s.id
-          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
           JOIN users t ON tr.tasker_id = t.id
           JOIN tasker_profiles tp ON t.id = tp.user_id
           WHERE tr.tasker_id = $1 AND tr.id = $2
@@ -1190,15 +1192,15 @@ const taskerController = {
             id: row.sender_id,
             name: row.sender_name,
             surname: row.sender_surname,
-            profile_image: row.sender_profile_image
+            profile_photo: row.sender_profile_photo
           },
           tasker: {
             id: row.tasker_id,
             name: row.tasker_name,
             surname: row.tasker_surname,
-            profile_photo: row.tasker_profile_image,
+            profile_photo: row.tasker_profile_photo,
             description: row.tasker_description,
-            hourly_rate: row.hourly_rate
+            hourly_rate: row.tasker_hourly_rate
           },
           gallery: row.gallery || [],
           status: row.status,
@@ -1284,14 +1286,14 @@ const taskerController = {
             s.id as sender_id,
             s.name as sender_name,
             s.surname as sender_surname,
-            COALESCE(sp.profile_photo, '') as sender_profile_image,
+            COALESCE(s.profile_photo, '') as sender_profile_photo,
             -- Tasker details
             t.id as tasker_id,
             t.name as tasker_name,
             t.surname as tasker_surname,
-            COALESCE(tp.profile_photo, '') as tasker_profile_image,
-            tp.hourly_rate,
+            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
+            tp.hourly_rate as tasker_hourly_rate,
             -- Categories as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -1322,7 +1324,6 @@ const taskerController = {
           FROM task_requests tr
           JOIN cities c ON tr.city_id = c.id
           JOIN users s ON tr.sender_id = s.id
-          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
           JOIN users t ON tr.tasker_id = t.id
           JOIN tasker_profiles tp ON t.id = tp.user_id
           WHERE tr.id = $1
@@ -1348,15 +1349,15 @@ const taskerController = {
             id: row.sender_id,
             name: row.sender_name,
             surname: row.sender_surname,
-            profile_image: row.sender_profile_image
+            profile_photo: row.sender_profile_photo
           },
           tasker: {
             id: row.tasker_id,
             name: row.tasker_name,
             surname: row.tasker_surname,
-            profile_photo: row.tasker_profile_image,
+            profile_photo: row.tasker_profile_photo,
             description: row.tasker_description,
-            hourly_rate: row.hourly_rate
+            hourly_rate: row.tasker_hourly_rate
           },
           gallery: row.gallery || [],
           status: row.status,
@@ -1403,14 +1404,14 @@ const taskerController = {
             s.id as sender_id,
             s.name as sender_name,
             s.surname as sender_surname,
-            COALESCE(sp.profile_photo, '') as sender_profile_image,
+            COALESCE(s.profile_photo, '') as sender_profile_photo,
             -- Tasker details
             t.id as tasker_id,
             t.name as tasker_name,
             t.surname as tasker_surname,
-            COALESCE(tp.profile_photo, '') as tasker_profile_image,
-            tp.hourly_rate,
+            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
+            tp.hourly_rate as tasker_hourly_rate,
             -- Categories as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -1441,7 +1442,6 @@ const taskerController = {
           FROM task_requests tr
           JOIN cities c ON tr.city_id = c.id
           JOIN users s ON tr.sender_id = s.id
-          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
           JOIN users t ON tr.tasker_id = t.id
           JOIN tasker_profiles tp ON t.id = tp.user_id
           WHERE tr.sender_id = $1 AND tr.id = $2
@@ -1471,15 +1471,15 @@ const taskerController = {
             id: row.sender_id,
             name: row.sender_name,
             surname: row.sender_surname,
-            profile_image: row.sender_profile_image
+            profile_photo: row.sender_profile_photo
           },
           tasker: {
             id: row.tasker_id,
             name: row.tasker_name,
             surname: row.tasker_surname,
-            profile_photo: row.tasker_profile_image,
+            profile_photo: row.tasker_profile_photo,
             description: row.tasker_description,
-            hourly_rate: row.hourly_rate
+            hourly_rate: row.tasker_hourly_rate
           },
           gallery: row.gallery || [],
           status: row.status,
@@ -1549,7 +1549,425 @@ const taskerController = {
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
-  }
+  },
+
+  // Get paid tasks that were sent by the user
+  async getPaidTasksSent(req, res) {
+    const userId = req.user.id;
+    const client = await pool.connect();
+
+    try {
+      const query = `
+        SELECT 
+          tr.id,
+          tr.description,
+          tr.duration,
+          tr.status,
+          tr.created_at,
+          -- City details
+          c.id as city_id,
+          c.name as city_name,
+          -- Categories as JSON array
+          (
+            SELECT json_agg(json_build_object(
+              'id', cat.id,
+              'name', cat.name,
+              'description', cat.description,
+              'image_url', cat.image_url
+            ))
+            FROM task_request_categories trc
+            JOIN categories cat ON trc.category_id = cat.id
+            WHERE trc.task_request_id = tr.id
+          ) as categories,
+          -- Sender details
+          s.id as sender_id,
+          s.name as sender_name,
+          s.surname as sender_surname,
+          COALESCE(s.profile_photo, '') as sender_profile_photo,
+          -- Tasker details
+          t.id as tasker_id,
+          t.name as tasker_name,
+          t.surname as tasker_surname,
+          COALESCE(tp.profile_photo, '') as tasker_profile_photo,
+          tp.description as tasker_description,
+          tp.hourly_rate as tasker_hourly_rate,
+          -- Availability as JSON array
+          (
+            SELECT json_agg(json_build_object(
+              'date', to_char(tra.date, 'YYYY-MM-DD'),
+              'time', to_char(tra.time_slot, 'HH24:MI:SS')
+            ))
+            FROM task_request_availability tra
+            WHERE tra.task_request_id = tr.id
+          ) as availability,
+          -- Gallery as JSON array
+          COALESCE(
+            (
+              SELECT json_agg(trg.image_url)
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
+            ),
+            '[]'::json
+          ) as gallery
+        FROM task_requests tr
+        JOIN cities c ON tr.city_id = c.id
+        JOIN users s ON tr.sender_id = s.id
+        JOIN users t ON tr.tasker_id = t.id
+        JOIN tasker_profiles tp ON t.id = tp.user_id
+        WHERE tr.sender_id = $1 
+        AND tr.status = 'paid'
+        ORDER BY tr.created_at DESC
+      `;
+
+      const result = await client.query(query, [userId]);
+
+      const paidTasks = result.rows.map(row => ({
+        id: row.id,
+        description: row.description,
+        city: {
+          id: row.city_id,
+          name: row.city_name
+        },
+        categories: row.categories || [],
+        duration: row.duration,
+        availability: row.availability || [],
+        sender: {
+          id: row.sender_id,
+          name: row.sender_name,
+          surname: row.sender_surname,
+          profile_photo: row.sender_profile_photo
+        },
+        tasker: {
+          id: row.tasker_id,
+          name: row.tasker_name,
+          surname: row.tasker_surname,
+          profile_photo: row.tasker_profile_photo,
+          description: row.tasker_description,
+          hourly_rate: row.tasker_hourly_rate
+        },
+        gallery: row.gallery || [],
+        status: row.status,
+        created_at: row.created_at
+      }));
+
+      res.json(paidTasks);
+    } catch (error) {
+      console.error('Error getting paid tasks sent:', error);
+      res.status(500).json({ error: 'Failed to get paid tasks' });
+    } finally {
+      client.release();
+    }
+  },
+
+  // Get paid tasks that were received by the tasker
+  async getPaidTasksReceived(req, res) {
+    const taskerId = req.user.id;
+    const client = await pool.connect();
+
+    try {
+      const query = `
+        SELECT 
+          tr.id,
+          tr.description,
+          tr.duration,
+          tr.status,
+          tr.created_at,
+          -- City details
+          c.id as city_id,
+          c.name as city_name,
+          -- Categories as JSON array
+          (
+            SELECT json_agg(json_build_object(
+              'id', cat.id,
+              'name', cat.name,
+              'description', cat.description,
+              'image_url', cat.image_url
+            ))
+            FROM task_request_categories trc
+            JOIN categories cat ON trc.category_id = cat.id
+            WHERE trc.task_request_id = tr.id
+          ) as categories,
+          -- Sender details
+          s.id as sender_id,
+          s.name as sender_name,
+          s.surname as sender_surname,
+          COALESCE(s.profile_photo, '') as sender_profile_photo,
+          -- Tasker details
+          t.id as tasker_id,
+          t.name as tasker_name,
+          t.surname as tasker_surname,
+          COALESCE(tp.profile_photo, '') as tasker_profile_photo,
+          tp.description as tasker_description,
+          tp.hourly_rate as tasker_hourly_rate,
+          -- Availability as JSON array
+          (
+            SELECT json_agg(json_build_object(
+              'date', to_char(tra.date, 'YYYY-MM-DD'),
+              'time', to_char(tra.time_slot, 'HH24:MI:SS')
+            ))
+            FROM task_request_availability tra
+            WHERE tra.task_request_id = tr.id
+          ) as availability,
+          -- Gallery as JSON array
+          COALESCE(
+            (
+              SELECT json_agg(trg.image_url)
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
+            ),
+            '[]'::json
+          ) as gallery
+        FROM task_requests tr
+        JOIN cities c ON tr.city_id = c.id
+        JOIN users s ON tr.sender_id = s.id
+        JOIN users t ON tr.tasker_id = t.id
+        JOIN tasker_profiles tp ON t.id = tp.user_id
+        WHERE tr.tasker_id = $1 
+        AND tr.status = 'paid'
+        ORDER BY tr.created_at DESC
+      `;
+
+      const result = await client.query(query, [taskerId]);
+
+      const paidTasks = result.rows.map(row => ({
+        id: row.id,
+        description: row.description,
+        city: {
+          id: row.city_id,
+          name: row.city_name
+        },
+        categories: row.categories || [],
+        duration: row.duration,
+        availability: row.availability || [],
+        sender: {
+          id: row.sender_id,
+          name: row.sender_name,
+          surname: row.sender_surname,
+          profile_photo: row.sender_profile_photo
+        },
+        tasker: {
+          id: row.tasker_id,
+          name: row.tasker_name,
+          surname: row.tasker_surname,
+          profile_photo: row.tasker_profile_photo,
+          description: row.tasker_description,
+          hourly_rate: row.tasker_hourly_rate
+        },
+        gallery: row.gallery || [],
+        status: row.status,
+        created_at: row.created_at
+      }));
+
+      res.json(paidTasks);
+    } catch (error) {
+      console.error('Error getting paid tasks received:', error);
+      res.status(500).json({ error: 'Failed to get paid tasks' });
+    } finally {
+      client.release();
+    }
+  },
+
+  // Get completed tasks sent by tasker
+  async getSentCompletedTasks(req, res) {
+    try {
+      const query = `
+        SELECT 
+          tr.id,
+          tr.description,
+          tr.duration,
+          tr.status,
+          tr.created_at,
+          -- City details
+          c.id as city_id,
+          c.name as city_name,
+          -- Categories as JSON array
+          (
+            SELECT json_agg(json_build_object(
+              'id', cat.id,
+              'name', cat.name
+            ))
+            FROM task_request_categories trc
+            JOIN categories cat ON trc.category_id = cat.id
+            WHERE trc.task_request_id = tr.id
+          ) as categories,
+          -- Availability as JSON array
+          (
+            SELECT json_agg(json_build_object(
+              'date', to_char(tra.date, 'YYYY-MM-DD'),
+              'time', to_char(tra.time_slot, 'HH24:MI:SS')
+            ))
+            FROM task_request_availability tra
+            WHERE tra.task_request_id = tr.id
+          ) as availability,
+          -- Sender details
+          s.id as sender_id,
+          s.name as sender_name,
+          s.surname as sender_surname,
+          COALESCE(s.profile_photo, '') as sender_profile_photo,
+          -- Tasker details
+          t.id as tasker_id,
+          t.name as tasker_name,
+          t.surname as tasker_surname,
+          COALESCE(tp.profile_photo, '') as tasker_profile_photo,
+          tp.description as tasker_description,
+          tp.hourly_rate as tasker_hourly_rate,
+          -- Gallery as JSON array
+          COALESCE(
+            (
+              SELECT json_agg(trg.image_url)
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
+            ),
+            '[]'::json
+          ) as gallery
+        FROM task_requests tr
+        JOIN cities c ON tr.city_id = c.id
+        JOIN users s ON tr.sender_id = s.id
+        JOIN users t ON tr.tasker_id = t.id
+        JOIN tasker_profiles tp ON t.id = tp.user_id
+        WHERE tr.sender_id = $1 
+        AND tr.status = 'Completed'
+        ORDER BY tr.created_at DESC
+      `;
+
+      const result = await pool.query(query, [req.user.id]);
+      
+      const tasks = result.rows.map(row => ({
+        id: row.id,
+        description: row.description,
+        city: {
+          id: row.city_id,
+          name: row.city_name
+        },
+        categories: row.categories || [],
+        duration: row.duration,
+        availability: row.availability || [],
+        sender: {
+          id: row.sender_id,
+          name: row.sender_name,
+          surname: row.sender_surname,
+          profile_photo: row.sender_profile_photo
+        },
+        tasker: {
+          id: row.tasker_id,
+          name: row.tasker_name,
+          surname: row.tasker_surname,
+          profile_photo: row.tasker_profile_photo,
+          description: row.tasker_description,
+          hourly_rate: row.tasker_hourly_rate
+        },
+        gallery: row.gallery || [],
+        status: row.status,
+        created_at: row.created_at
+      }));
+
+      res.json(tasks);
+    } catch (error) {
+      console.error('Error getting completed tasks sent:', error);
+      res.status(500).json({ error: 'Failed to get completed tasks' });
+    }
+  },
+
+  // Get completed tasks received by tasker
+  async getReceivedCompletedTasks(req, res) {
+    try {
+      const query = `
+        SELECT 
+          tr.id,
+          tr.description,
+          tr.duration,
+          tr.status,
+          tr.created_at,
+          -- City details
+          c.id as city_id,
+          c.name as city_name,
+          -- Categories as JSON array
+          (
+            SELECT json_agg(json_build_object(
+              'id', cat.id,
+              'name', cat.name
+            ))
+            FROM task_request_categories trc
+            JOIN categories cat ON trc.category_id = cat.id
+            WHERE trc.task_request_id = tr.id
+          ) as categories,
+          -- Availability as JSON array
+          (
+            SELECT json_agg(json_build_object(
+              'date', to_char(tra.date, 'YYYY-MM-DD'),
+              'time', to_char(tra.time_slot, 'HH24:MI:SS')
+            ))
+            FROM task_request_availability tra
+            WHERE tra.task_request_id = tr.id
+          ) as availability,
+          -- Sender details
+          s.id as sender_id,
+          s.name as sender_name,
+          s.surname as sender_surname,
+          COALESCE(s.profile_photo, '') as sender_profile_photo,
+          -- Tasker details
+          t.id as tasker_id,
+          t.name as tasker_name,
+          t.surname as tasker_surname,
+          COALESCE(tp.profile_photo, '') as tasker_profile_photo,
+          tp.description as tasker_description,
+          tp.hourly_rate as tasker_hourly_rate,
+          -- Gallery as JSON array
+          COALESCE(
+            (
+              SELECT json_agg(trg.image_url)
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
+            ),
+            '[]'::json
+          ) as gallery
+        FROM task_requests tr
+        JOIN cities c ON tr.city_id = c.id
+        JOIN users s ON tr.sender_id = s.id
+        JOIN users t ON tr.tasker_id = t.id
+        JOIN tasker_profiles tp ON t.id = tp.user_id
+        WHERE tr.tasker_id = $1 
+        AND tr.status = 'Completed'
+        ORDER BY tr.created_at DESC
+      `;
+
+      const result = await pool.query(query, [req.user.id]);
+      
+      const tasks = result.rows.map(row => ({
+        id: row.id,
+        description: row.description,
+        city: {
+          id: row.city_id,
+          name: row.city_name
+        },
+        categories: row.categories || [],
+        duration: row.duration,
+        availability: row.availability || [],
+        sender: {
+          id: row.sender_id,
+          name: row.sender_name,
+          surname: row.sender_surname,
+          profile_photo: row.sender_profile_photo
+        },
+        tasker: {
+          id: row.tasker_id,
+          name: row.tasker_name,
+          surname: row.tasker_surname,
+          profile_photo: row.tasker_profile_photo,
+          description: row.tasker_description,
+          hourly_rate: row.tasker_hourly_rate
+        },
+        gallery: row.gallery || [],
+        status: row.status,
+        created_at: row.created_at
+      }));
+
+      res.json(tasks);
+    } catch (error) {
+      console.error('Error getting completed tasks received:', error);
+      res.status(500).json({ error: 'Failed to get completed tasks' });
+    }
+  },
 };
 
 module.exports = {

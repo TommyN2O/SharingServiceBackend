@@ -10,11 +10,18 @@ const City = require('./models/City');
 const authRoutes = require('./routes/authRoutes');
 const taskerRoutes = require('./routes/taskerRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 
 const app = express();
 
 // Middleware
-app.use(express.json({ limit: '10mb' }));
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/payment/webhook') {
+    next();
+  } else {
+    express.json({ limit: '10mb' })(req, res, next);
+  }
+});
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cors);
 app.use(requestLogger);
@@ -199,6 +206,13 @@ app.use('/api/cities', require('./routes/cityRoutes'));
 app.use('/api/auth', authRoutes);
 app.use('/api/tasker', taskerRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/payment', paymentRoutes);
+
+// Special handling for Stripe webhook route
+app.use('/api/payment/webhook', express.raw({ type: 'application/json' }));
+
+// Regular JSON parsing for all other routes
+app.use(express.json());
 
 // Initialize Lithuanian cities
 app.get('/api/init-cities', async (req, res) => {

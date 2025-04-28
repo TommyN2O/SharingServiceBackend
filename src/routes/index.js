@@ -50,4 +50,11 @@ router.use('/category', categoryRoutes);
 // Tasker routes
 router.use('/tasker', taskerRoutes);
 
+// Server date route
+router.get('/serverdate', (req, res) => {
+  res.status(200).json({
+    date: new Date().toISOString()
+  });
+});
+
 module.exports = router; 

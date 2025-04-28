@@ -15,6 +15,7 @@ class User extends BaseModel {
     try {
       await this.createUserTable();
       await this.addCurrentTokenColumn();
+      await this.addProfilePhotoColumn();
       console.log('User model initialized successfully');
     } catch (error) {
       console.error('Error initializing User model:', error);
@@ -134,7 +135,8 @@ class User extends BaseModel {
         is_tasker BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW(),
         token_created_at TIMESTAMP DEFAULT NOW(),
-        current_token TEXT
+        current_token TEXT,
+        profile_photo TEXT DEFAULT ''
       )
     `;
     await pool.query(query);
@@ -167,6 +169,24 @@ class User extends BaseModel {
     await pool.query(query);
   }
 
+  // Add profile_photo column if it doesn't exist
+  async addProfilePhotoColumn() {
+    const query = `
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'users' 
+          AND column_name = 'profile_photo'
+        ) THEN 
+          ALTER TABLE users ADD COLUMN profile_photo TEXT DEFAULT '';
+        END IF;
+      END $$;
+    `;
+    await pool.query(query);
+  }
+
   // Get all users (without sensitive data)
   async getAllUsers() {
     const query = `
@@ -191,8 +211,8 @@ class User extends BaseModel {
   // Get user by ID
   async getById(id) {
     const query = `
-      SELECT id, name, surname, email, date_of_birth, created_at, token_created_at, current_token, is_tasker
-      FROM ${this.tableName}
+      SELECT id, name, surname, email, date_of_birth, created_at, token_created_at, current_token, is_tasker, profile_photo
+      FROM users
       WHERE id = $1
     `;
     const result = await pool.query(query, [id]);
@@ -254,7 +274,7 @@ class User extends BaseModel {
 
   // Update user
   async update(id, data) {
-    const allowedFields = ['name', 'surname', 'email', 'date_of_birth', 'is_tasker', 'token_created_at', 'current_token'];
+    const allowedFields = ['name', 'surname', 'email', 'date_of_birth', 'is_tasker', 'token_created_at', 'current_token', 'profile_photo'];
     
     // Filter out undefined values and non-allowed fields
     const updateFields = Object.entries(data)
@@ -276,10 +296,19 @@ class User extends BaseModel {
       UPDATE users
       SET ${updates}
       WHERE id = $1
-      RETURNING *
+      RETURNING id, name, surname, email, date_of_birth, created_at, is_tasker, profile_photo
     `;
     
+    console.log('Update query:', query);
+    console.log('Update values:', values);
+    
     const result = await pool.query(query, values);
+    console.log('Update result:', result.rows[0]);
+    
+    if (!result.rows[0]) {
+      throw new Error('User not found');
+    }
+    
     return result.rows[0];
   }
 
@@ -310,6 +339,7 @@ class User extends BaseModel {
         password_hash,
         date_of_birth,
         created_at,
+        profile_photo,
         CASE 
           WHEN EXISTS (SELECT 1 FROM tasker_profiles WHERE user_id = users.id) 
           THEN true 
@@ -333,6 +363,7 @@ class User extends BaseModel {
         password_hash,
         date_of_birth,
         created_at,
+        profile_photo,
         CASE 
           WHEN EXISTS (SELECT 1 FROM tasker_profiles WHERE user_id = users.id) 
           THEN true 
@@ -389,6 +420,18 @@ class User extends BaseModel {
       console.error('Error in createToken:', error);
       throw error;
     }
+  }
+
+  // Update user's profile photo
+  async updateProfilePhoto(userId, photoPath) {
+    const query = `
+      UPDATE users
+      SET profile_photo = $2
+      WHERE id = $1
+      RETURNING id, name, surname, email, date_of_birth, created_at, is_tasker, profile_photo
+    `;
+    const result = await pool.query(query, [userId, photoPath]);
+    return result.rows[0];
   }
 }
 

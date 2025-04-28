@@ -36,13 +36,27 @@ const messageController = {
                 'id', u2.id,
                 'name', u2.name,
                 'surname', u2.surname,
-                'profile_photo', COALESCE(tp2.profile_photo, '')
+                'profile_photo', CASE 
+                  WHEN EXISTS (
+                    SELECT 1 FROM task_requests tr 
+                    WHERE tr.tasker_id = u2.id AND tr.sender_id = $1
+                  ) THEN COALESCE(tp2.profile_photo, '')
+                  ELSE COALESCE(u2.profile_photo, '')
+                END,
+                'is_tasker', u2.is_tasker
               )
               ELSE json_build_object(
                 'id', u1.id,
                 'name', u1.name,
                 'surname', u1.surname,
-                'profile_photo', COALESCE(tp1.profile_photo, '')
+                'profile_photo', CASE 
+                  WHEN EXISTS (
+                    SELECT 1 FROM task_requests tr 
+                    WHERE tr.tasker_id = u1.id AND tr.sender_id = $1
+                  ) THEN COALESCE(tp1.profile_photo, '')
+                  ELSE COALESCE(u1.profile_photo, '')
+                END,
+                'is_tasker', u1.is_tasker
               )
             END as "otherUser"
           FROM chats c
@@ -107,10 +121,9 @@ const messageController = {
             lm.*,
             u.name,
             u.surname,
-            COALESCE(tp.profile_photo, '') as profile_photo
+            COALESCE(u.profile_photo, '') as profile_photo
           FROM latest_messages lm
           JOIN users u ON u.id = lm.other_user_id
-          LEFT JOIN tasker_profiles tp ON tp.user_id = u.id
           ORDER BY lm.created_at DESC
         `;
 
@@ -160,7 +173,14 @@ const messageController = {
               u.id,
               u.name,
               u.surname,
-              COALESCE(tp.profile_photo, '') as profile_photo
+              CASE 
+                WHEN EXISTS (
+                  SELECT 1 FROM task_requests tr 
+                  WHERE tr.tasker_id = u.id AND tr.sender_id = ANY(ARRAY(SELECT UNNEST($1) EXCEPT SELECT u.id))
+                ) THEN COALESCE(tp.profile_photo, '')
+                ELSE COALESCE(u.profile_photo, '')
+              END as profile_photo,
+              u.is_tasker
             FROM users u
             LEFT JOIN tasker_profiles tp ON u.id = tp.user_id
             WHERE u.id = ANY($1)
@@ -262,26 +282,57 @@ const messageController = {
       
       const client = await pool.connect();
       try {
-        // Get or create chat
-        const chatId = await Message.getOrCreateChat(userId, receiverId);
+        // Check if chat exists
+        const chatCheckQuery = `
+          SELECT id FROM chats
+          WHERE (user1_id = $1 AND user2_id = $2)
+             OR (user1_id = $2 AND user2_id = $1)
+        `;
+        console.log('Finding chat with query:', chatCheckQuery);
+        console.log('Query params:', [userId, receiverId]);
+        
+        const existingChat = await client.query(chatCheckQuery, [userId, receiverId]);
+        console.log('Existing chat result:', existingChat.rows);
+
+        let chatId;
+        if (existingChat.rows.length > 0) {
+          chatId = existingChat.rows[0].id;
+          console.log('Found existing chat:', chatId);
+        } else {
+          // Create new chat if it doesn't exist
+          const createChatQuery = `
+            INSERT INTO chats (user1_id, user2_id, created_at)
+            VALUES ($1, $2, NOW())
+            RETURNING id
+          `;
+          const newChat = await client.query(createChatQuery, [userId, receiverId]);
+          chatId = newChat.rows[0].id;
+          console.log('Created new chat:', chatId);
+        }
 
         // Get users details
         const usersQuery = `
-          WITH chat_users AS (
-            SELECT 
-              u.id,
-              u.name,
-              u.surname,
-              COALESCE(tp.profile_photo, '') as profile_photo
-            FROM users u
-            LEFT JOIN tasker_profiles tp ON u.id = tp.user_id
-            WHERE u.id = ANY($1)
-          )
-          SELECT *
-          FROM chat_users
+          SELECT 
+            u.id,
+            u.name,
+            u.surname,
+            COALESCE(
+              CASE WHEN u.is_tasker AND EXISTS (
+                SELECT 1 FROM task_requests tr 
+                WHERE tr.tasker_id = u.id 
+                AND tr.sender_id = $1
+              ) THEN tp.profile_photo
+              ELSE u.profile_photo
+              END,
+              ''
+            ) as profile_photo,
+            u.is_tasker
+          FROM users u
+          LEFT JOIN tasker_profiles tp ON u.id = tp.user_id
+          WHERE u.id IN ($1, $2)
         `;
 
-        const result = await client.query(usersQuery, [[userId, receiverId]]);
+        const result = await client.query(usersQuery, [userId, receiverId]);
         
         if (result.rows.length < 2) {
           return res.status(404).json({
@@ -463,13 +514,27 @@ const messageController = {
               'id', s.id,
               'name', s.name,
               'surname', s.surname,
-              'profile_photo', COALESCE(sp.profile_photo, '')
+              'profile_photo', CASE 
+                WHEN EXISTS (
+                  SELECT 1 FROM task_requests tr 
+                  WHERE tr.tasker_id = s.id AND tr.sender_id = r.id
+                ) THEN COALESCE(sp.profile_photo, '')
+                ELSE COALESCE(s.profile_photo, '')
+              END,
+              'is_tasker', s.is_tasker
             ) as sender,
             json_build_object(
               'id', r.id,
               'name', r.name,
               'surname', r.surname,
-              'profile_photo', COALESCE(rp.profile_photo, '')
+              'profile_photo', CASE 
+                WHEN EXISTS (
+                  SELECT 1 FROM task_requests tr 
+                  WHERE tr.tasker_id = r.id AND tr.sender_id = s.id
+                ) THEN COALESCE(rp.profile_photo, '')
+                ELSE COALESCE(r.profile_photo, '')
+              END,
+              'is_tasker', r.is_tasker
             ) as receiver
           FROM messages m
           JOIN users s ON m.sender_id = s.id

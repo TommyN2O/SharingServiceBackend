@@ -77,7 +77,8 @@ const userController = {
           name: user.name,
           surname: user.surname,
           email: user.email,
-          date_of_birth: user.date_of_birth
+          date_of_birth: user.date_of_birth,
+          profile_photo: ''
         },
         token
       });
@@ -159,25 +160,31 @@ const userController = {
   // Get user profile
   async getProfile(req, res) {
     try {
+      console.log('Getting profile for user ID:', req.user.id);
       const userId = req.user.id; // From auth middleware
       const user = await User.getById(userId);
+      console.log('User data from DB:', user);
       
       if (!user) {
+        console.log('User not found in database');
         return res.status(404).json({
           error: 'User not found'
         });
       }
 
-      res.status(200).json({
-        user: {
-          id: user.id,
-          name: user.name,
-          surname: user.surname,
-          email: user.email,
-          date_of_birth: user.date_of_birth,
-          created_at: user.created_at
-        }
-      });
+      const response = {
+        id: user.id,
+        name: user.name,
+        surname: user.surname,
+        email: user.email,
+        date_of_birth: user.date_of_birth,
+        created_at: user.created_at,
+        is_tasker: user.is_tasker,
+        profile_photo: user.profile_photo || ''
+      };
+      console.log('Sending response:', response);
+
+      res.status(200).json(response);
     } catch (error) {
       console.error('Error getting user profile:', error);
       res.status(500).json({
@@ -186,27 +193,70 @@ const userController = {
     }
   },
 
-  // Update user profile
-  async updateProfile(req, res) {
+  // Update user profile with image
+  async updateUserProfile(req, res) {
     try {
-      const userId = req.user.id; // From auth middleware
-      const { name, surname, date_of_birth } = req.body;
+      console.log('Updating user profile:', req.user.id);
+      console.log('Request body:', req.body);
+      console.log('Files:', req.files);
 
-      const updatedUser = await User.update(userId, {
-        name,
+      const userId = req.user.id;
+      
+      // Parse the profile_data from the request body
+      let userData;
+      try {
+        userData = JSON.parse(req.body.profile_data);
+        console.log('Parsed profile data:', userData);
+      } catch (error) {
+        console.error('Error parsing profile data:', error);
+        return res.status(400).json({
+          error: 'Invalid profile data'
+        });
+      }
+
+      // Map the fields from the request to our database fields
+      const { fullname, surname, birthdate } = userData;
+
+      // Get current user data
+      const currentUser = await User.getById(userId);
+      console.log('Current user data:', currentUser);
+
+      // Prepare update data
+      const updateData = {
+        name: fullname,
         surname,
-        date_of_birth
-      });
+        date_of_birth: birthdate
+      };
+
+      // Handle profile photo if provided
+      if (req.files && req.files.profile_photo) {
+        const file = req.files.profile_photo[0];
+        const photoPath = `images/profiles/${file.filename}`;
+        console.log('New profile photo path:', photoPath);
+        
+        // Update profile photo separately
+        await User.updateProfilePhoto(userId, photoPath);
+      }
+
+      console.log('Update data:', updateData);
+
+      // Update user data
+      const updatedUser = await User.update(userId, updateData);
+      console.log('Updated user data:', updatedUser);
+
+      // Get the latest user data to ensure we have the correct profile photo
+      const finalUser = await User.getById(userId);
+      console.log('Final user data:', finalUser);
 
       res.status(200).json({
-        user: {
-          id: updatedUser.id,
-          name: updatedUser.name,
-          surname: updatedUser.surname,
-          email: updatedUser.email,
-          date_of_birth: updatedUser.date_of_birth,
-          created_at: updatedUser.created_at
-        }
+        id: finalUser.id,
+        name: finalUser.name,
+        surname: finalUser.surname,
+        email: finalUser.email,
+        date_of_birth: finalUser.date_of_birth,
+        created_at: finalUser.created_at,
+        is_tasker: finalUser.is_tasker,
+        profile_photo: finalUser.profile_photo || ''
       });
     } catch (error) {
       console.error('Error updating user profile:', error);
@@ -339,6 +389,7 @@ const userController = {
           date_of_birth: user.date_of_birth,
           created_at: user.created_at,
           is_tasker: user.is_tasker,
+          profile_photo: user.profile_photo || '',
           password_hash: user.password_hash
         }
       });

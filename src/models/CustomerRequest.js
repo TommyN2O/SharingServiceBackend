@@ -8,9 +8,12 @@ class CustomerRequest extends BaseModel {
 
   async findByUserId(userId) {
     const query = `
-      SELECT cr.*, u.name, u.surname
+      SELECT cr.*, 
+             u.name, u.surname, u.profile_photo as user_profile_photo,
+             t.name as tasker_name, t.surname as tasker_surname, t.profile_photo as tasker_profile_photo
       FROM customer_requests cr
       JOIN users u ON cr.user_id = u.id
+      LEFT JOIN users t ON cr.tasker_id = t.id
       WHERE cr.user_id = $1
     `;
     const { rows } = await pool.query(query, [userId]);
@@ -19,9 +22,12 @@ class CustomerRequest extends BaseModel {
 
   async findRequestsByCategory(categoryId) {
     const query = `
-      SELECT cr.*, u.name, u.surname
+      SELECT cr.*, 
+             u.name, u.surname, u.profile_photo as user_profile_photo,
+             t.name as tasker_name, t.surname as tasker_surname, t.profile_photo as tasker_profile_photo
       FROM customer_requests cr
       JOIN users u ON cr.user_id = u.id
+      LEFT JOIN users t ON cr.tasker_id = t.id
       WHERE cr.category_id = $1
       ORDER BY cr.created_at DESC
     `;
@@ -31,9 +37,12 @@ class CustomerRequest extends BaseModel {
 
   async findRequestsByCity(city) {
     const query = `
-      SELECT cr.*, u.name, u.surname
+      SELECT cr.*, 
+             u.name, u.surname, u.profile_photo as user_profile_photo,
+             t.name as tasker_name, t.surname as tasker_surname, t.profile_photo as tasker_profile_photo
       FROM customer_requests cr
       JOIN users u ON cr.user_id = u.id
+      LEFT JOIN users t ON cr.tasker_id = t.id
       WHERE cr.city = $1
       ORDER BY cr.created_at DESC
     `;
@@ -43,8 +52,10 @@ class CustomerRequest extends BaseModel {
 
   async getRequestWithOffers(requestId) {
     const query = `
-      SELECT cr.*, u.name, u.surname,
-             cro.*, tu.name as tasker_name, tu.surname as tasker_surname
+      SELECT cr.*, 
+             u.name, u.surname, u.profile_photo as user_profile_photo,
+             cro.*, 
+             tu.name as tasker_name, tu.surname as tasker_surname, tu.profile_photo as tasker_profile_photo
       FROM customer_requests cr
       JOIN users u ON cr.user_id = u.id
       LEFT JOIN customer_request_offers cro ON cr.id = cro.request_id
