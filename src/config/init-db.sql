@@ -60,7 +60,10 @@ CREATE TABLE task_requests (
     id SERIAL PRIMARY KEY,
     description TEXT NOT NULL,
     city_id INTEGER REFERENCES cities(id),
-    duration TEXT NOT NULL,
+    duration INTEGER NOT NULL,
+    sender_id INTEGER REFERENCES users(id),
+    tasker_id INTEGER REFERENCES users(id),
+    status VARCHAR(50) DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
