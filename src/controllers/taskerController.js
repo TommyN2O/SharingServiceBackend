@@ -521,8 +521,18 @@ const taskerController = {
   // Get all tasker profiles
   async getAllProfiles(req, res) {
     try {
-      console.log('Getting all tasker profiles');
-      const profiles = await TaskerProfile.getAllProfiles();
+      console.log('Getting all tasker profiles with filters:', req.query);
+      const filters = {
+        category: req.query.category ? parseInt(req.query.category) : null,
+        rating: req.query.rating ? req.query.rating : null,
+        city: req.query.city ? req.query.city : null,
+        date: req.query.date ? req.query.date : null,
+        timeFrom: req.query.timeFrom ? req.query.timeFrom : null,
+        timeTo: req.query.timeTo ? req.query.timeTo : null,
+        minPrice: req.query.minPrice ? parseFloat(req.query.minPrice) : null,
+        maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice) : null
+      };
+      const profiles = await TaskerProfile.getAllProfiles(filters);
       res.json(profiles);
     } catch (error) {
       console.error('Error getting all tasker profiles:', error);

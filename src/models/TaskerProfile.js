@@ -628,9 +628,32 @@ class TaskerProfile extends BaseModel {
   }
 
   // Get all tasker profiles with complete information
-  async getAllProfiles() {
-    const query = `
-      SELECT 
+  async getAllProfiles(filters = {}) {
+    // Normalize filters
+    const normalizedFilters = {
+      ...filters,
+      rating: filters.rating ? parseFloat(filters.rating) : undefined,
+      category: filters.category ? parseInt(filters.category) : undefined,
+      minPrice: filters.minPrice !== null ? parseFloat(filters.minPrice) : undefined,
+      maxPrice: filters.maxPrice !== null ? parseFloat(filters.maxPrice) : undefined
+    };
+
+    console.log('Original filters:', filters);
+    console.log('Normalized filters:', normalizedFilters);
+
+    let query = `
+      WITH tasker_ratings AS (
+        SELECT 
+          tp.id as tasker_id,
+          COALESCE(AVG(r.rating), 0) as avg_rating,
+          COUNT(DISTINCT r.id) as review_count
+        FROM tasker_profiles tp
+        LEFT JOIN users u ON tp.user_id = u.id
+        LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id
+        LEFT JOIN reviews r ON pt.id = r.planned_task_id
+        GROUP BY tp.id
+      )
+      SELECT DISTINCT
         tp.id,
         CASE 
           WHEN tp.profile_photo IS NULL THEN NULL
@@ -640,8 +663,8 @@ class TaskerProfile extends BaseModel {
         END as profile_photo,
         tp.description,
         tp.hourly_rate,
-        COALESCE(AVG(r.rating), 0) as rating,
-        COUNT(DISTINCT r.id) as review_count,
+        tr.avg_rating as rating,
+        tr.review_count,
         u.name,
         u.surname,
         u.email,
@@ -690,13 +713,78 @@ class TaskerProfile extends BaseModel {
         ) as gallery
       FROM tasker_profiles tp
       JOIN users u ON tp.user_id = u.id
-      LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id
-      LEFT JOIN reviews r ON pt.id = r.planned_task_id
-      GROUP BY tp.id, u.id, u.name, u.surname, u.email
-      ORDER BY rating DESC, review_count DESC
+      JOIN tasker_ratings tr ON tr.tasker_id = tp.id
     `;
+
+    const queryParams = [];
+    const conditions = [];
+
+    // Add city filter if provided
+    if (normalizedFilters.city) {
+      const cityIds = normalizedFilters.city.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      if (cityIds.length > 0) {
+        queryParams.push(cityIds);
+        query += `
+        JOIN tasker_cities tc ON tp.id = tc.tasker_id
+        `;
+        conditions.push(`tc.city_id = ANY($${queryParams.length})`);
+      }
+    }
+
+    // Add category filter if provided
+    if (normalizedFilters.category) {
+      queryParams.push(normalizedFilters.category);
+      query += `
+      JOIN tasker_categories tcat ON tp.id = tcat.tasker_id
+      `;
+      conditions.push(`tcat.category_id = $${queryParams.length}`);
+    }
+
+    // Add date and time availability filters
+    if (normalizedFilters.date) {
+      queryParams.push(normalizedFilters.date);
+      query += `
+      JOIN tasker_availability ta ON tp.id = ta.tasker_id
+      `;
+      conditions.push(`ta.date = $${queryParams.length}::date`);
+
+      // Add time range filter if both timeFrom and timeTo are provided
+      if (normalizedFilters.timeFrom && normalizedFilters.timeTo) {
+        queryParams.push(normalizedFilters.timeFrom + ':00', normalizedFilters.timeTo + ':00');
+        conditions.push(`ta.time_slot BETWEEN $${queryParams.length - 1}::time AND $${queryParams.length}::time`);
+      }
+    }
+
+    // Add price range filters
+    if (normalizedFilters.minPrice !== undefined && !isNaN(normalizedFilters.minPrice)) {
+      queryParams.push(normalizedFilters.minPrice);
+      conditions.push(`tp.hourly_rate >= $${queryParams.length}`);
+    }
+
+    if (normalizedFilters.maxPrice !== undefined && !isNaN(normalizedFilters.maxPrice)) {
+      queryParams.push(normalizedFilters.maxPrice);
+      conditions.push(`tp.hourly_rate <= $${queryParams.length}`);
+    }
+
+    // Add rating filter
+    if (normalizedFilters.rating !== undefined && !isNaN(normalizedFilters.rating)) {
+      queryParams.push(normalizedFilters.rating);
+      conditions.push(`tr.avg_rating >= $${queryParams.length}`);
+    }
+
+    // Build the WHERE clause
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+
+    query += `
+      ORDER BY tr.avg_rating DESC, tr.review_count DESC
+    `;
+
+    console.log('Final query:', query);
+    console.log('Final parameters:', queryParams);
     
-    const result = await pool.query(query);
+    const result = await pool.query(query, queryParams);
     
     return result.rows.map(profile => ({
       ...profile,
