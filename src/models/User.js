@@ -16,6 +16,7 @@ class User extends BaseModel {
       await this.createUserTable();
       await this.addCurrentTokenColumn();
       await this.addProfilePhotoColumn();
+      await this.addWalletAmountColumn();
       console.log('User model initialized successfully');
     } catch (error) {
       console.error('Error initializing User model:', error);
@@ -136,7 +137,8 @@ class User extends BaseModel {
         created_at TIMESTAMP DEFAULT NOW(),
         token_created_at TIMESTAMP DEFAULT NOW(),
         current_token TEXT,
-        profile_photo TEXT DEFAULT ''
+        profile_photo TEXT DEFAULT '',
+        wallet_amount INTEGER DEFAULT 0
       )
     `;
     await pool.query(query);
@@ -185,6 +187,25 @@ class User extends BaseModel {
       END $$;
     `;
     await pool.query(query);
+  }
+
+  // Add wallet_amount column if it doesn't exist
+  async addWalletAmountColumn() {
+    const query = `
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'users' 
+          AND column_name = 'wallet_amount'
+        ) THEN 
+          ALTER TABLE users ADD COLUMN wallet_amount INTEGER DEFAULT 0;
+        END IF;
+      END $$;
+    `;
+    await pool.query(query);
+    console.log('Wallet amount column added successfully');
   }
 
   // Get all users (without sensitive data)
@@ -431,6 +452,18 @@ class User extends BaseModel {
       RETURNING id, name, surname, email, date_of_birth, created_at, is_tasker, profile_photo
     `;
     const result = await pool.query(query, [userId, photoPath]);
+    return result.rows[0];
+  }
+
+  // Update user's wallet amount
+  async updateWalletAmount(userId, amountInCents) {
+    const query = `
+      UPDATE users
+      SET wallet_amount = wallet_amount + $1
+      WHERE id = $2
+      RETURNING wallet_amount
+    `;
+    const result = await pool.query(query, [amountInCents, userId]);
     return result.rows[0];
   }
 }

@@ -12,6 +12,7 @@ DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS cities CASCADE;
 DROP TABLE IF EXISTS categories CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS payments CASCADE;
 
 -- Create users table
 CREATE TABLE users (
@@ -20,7 +21,9 @@ CREATE TABLE users (
     surname VARCHAR(100) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
+    date_of_birth DATE,
     is_tasker BOOLEAN DEFAULT FALSE,
+    wallet_amount INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -58,9 +61,17 @@ CREATE TABLE task_requests (
     description TEXT NOT NULL,
     city_id INTEGER REFERENCES cities(id),
     duration TEXT NOT NULL,
-    sender_id INTEGER REFERENCES users(id),
-    tasker_id INTEGER REFERENCES users(id),
-    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create payments table
+CREATE TABLE payments (
+    id SERIAL PRIMARY KEY,
+    task_request_id INTEGER REFERENCES task_requests(id) ON DELETE CASCADE,
+    amount DECIMAL(10,2) NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'EUR',
+    stripe_session_id VARCHAR(255) NOT NULL UNIQUE,
+    stripe_payment_intent_id VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

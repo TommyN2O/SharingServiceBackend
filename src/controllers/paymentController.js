@@ -1,24 +1,126 @@
 const stripe = require('../config/stripe');
-const TaskRequest = require('../models/TaskRequest');
 const path = require('path');
 const fs = require('fs');
+const pool = require('../config/database');
+const Payment = require('../models/Payment');
+const TaskRequest = require('../models/TaskRequest');
+const User = require('../models/User');
 
 const paymentController = {
   // Create a checkout session
   async createCheckoutSession(req, res) {
     try {
-      const { amount, task_id } = req.body;
+      const { amount, task_id, type } = req.body;
 
-      if (!amount || !task_id) {
+      if (!amount || !task_id || !type) {
         return res.status(400).json({
-          error: 'Missing required parameters: amount and task_id are required'
+          error: 'Missing required parameters: amount, task_id, and type are required'
         });
       }
 
-      // Use standard HTTP URLs for Stripe but we'll redirect to app URLs later
-      const baseUrl = 'http://192.168.56.1:3001';
+      if (!['Card', 'Wallet'].includes(type)) {
+        return res.status(400).json({
+          error: 'Invalid payment type. Must be either "Card" or "Wallet"'
+        });
+      }
 
-      // Create Stripe checkout session
+      // Get task request to find tasker_id
+      const taskRequest = await TaskRequest.findById(task_id);
+      if (!taskRequest) {
+        return res.status(404).json({ error: 'Task request not found' });
+      }
+
+      // Handle wallet payment
+      if (type === 'Wallet') {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+
+          // Get user's wallet amount
+          const userQuery = 'SELECT wallet_amount FROM users WHERE id = $1';
+          const userResult = await client.query(userQuery, [req.user.id]);
+          
+          if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+          }
+
+          const walletAmount = userResult.rows[0].wallet_amount || 0;
+          const amountInCents = Math.round(amount * 100);
+
+          // Check if wallet has enough funds
+          if (walletAmount < amountInCents) {
+            return res.status(400).json({
+              error: 'Insufficient funds in wallet',
+              required: amountInCents / 100,
+              available: walletAmount / 100
+            });
+          }
+
+          // Deduct amount from wallet
+          const newWalletAmount = walletAmount - amountInCents;
+          await client.query(
+            'UPDATE users SET wallet_amount = $1 WHERE id = $2',
+            [newWalletAmount, req.user.id]
+          );
+
+          // Add amount to tasker's wallet
+          const taskerQuery = 'SELECT wallet_amount FROM users WHERE id = $1';
+          const taskerResult = await client.query(taskerQuery, [taskRequest.tasker_id]);
+          const taskerWalletAmount = taskerResult.rows[0].wallet_amount || 0;
+          const newTaskerWalletAmount = taskerWalletAmount + amountInCents;
+          await client.query(
+            'UPDATE users SET wallet_amount = $1 WHERE id = $2',
+            [newTaskerWalletAmount, taskRequest.tasker_id]
+          );
+
+          // Create a unique session ID for wallet payment
+          const sessionIdSender = `wallet_payment_sender_${req.user.id}_${task_id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const sessionIdTasker = `wallet_payment_tasker_${req.user.id}_${task_id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+          // Create payment record for sender (payment)
+          await Payment.createPayment({
+            task_request_id: task_id,
+            amount: amount * -1,
+            currency: 'EUR',
+            stripe_session_id: sessionIdSender,
+            stripe_payment_intent_id: null,
+            status: 'completed',
+            user_id: req.user.id,
+            is_payment: true
+          });
+
+          // Create payment record for tasker (earning)
+          await Payment.createPayment({
+            task_request_id: task_id,
+            amount: amount,
+            currency: 'EUR',
+            stripe_session_id: sessionIdTasker,
+            stripe_payment_intent_id: null,
+            status: 'completed',
+            user_id: taskRequest.tasker_id,
+            is_payment: false
+          });
+
+          // Update task status to paid
+          await TaskRequest.updateStatus(task_id, 'paid');
+
+          await client.query('COMMIT');
+
+          return res.json({
+            success: true,
+            message: 'Payment completed successfully using wallet',
+            remaining_balance: newWalletAmount / 100
+          });
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        } finally {
+          client.release();
+        }
+      }
+
+      // Handle card payment (existing Stripe flow)
+      const baseUrl = 'http://192.168.56.1:3001';
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [
@@ -36,6 +138,10 @@ const paymentController = {
         ],
         metadata: {
           task_id: task_id.toString(),
+          amount: amount.toString(),
+          sender_id: req.user.id.toString(),
+          tasker_id: taskRequest.tasker_id.toString(),
+          session_prefix: `payer_${req.user.id}_${task_id}`
         },
         mode: 'payment',
         success_url: `${baseUrl}/api/payment/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -81,6 +187,12 @@ const paymentController = {
     const { task_id } = req.query;
     console.log('Payment cancelled by user for task:', task_id);
 
+    // Update payment status to canceled
+    const payment = await Payment.getByTaskRequestId(task_id);
+    if (payment) {
+      await Payment.updateStatusToCanceled(task_id);
+    }
+
     // Read the cancel HTML template
     let htmlContent = fs.readFileSync(path.join(__dirname, '../views/payment-cancel.html'), 'utf8');
     
@@ -114,26 +226,55 @@ const paymentController = {
         case 'checkout.session.completed': {
           const session = event.data.object;
           const taskId = session.metadata.task_id;
+          const senderId = session.metadata.sender_id;
+          const taskerId = session.metadata.tasker_id;
+          const amount = parseFloat(session.metadata.amount);
+          const sessionPrefix = session.metadata.session_prefix;
+          const amountInCents = Math.round(amount * 100);
 
           console.log('=== Checkout Session Completed ===');
-          console.log('Task ID:', taskId);
-          console.log('Payment Status:', session.payment_status);
           console.log('Session ID:', session.id);
+          console.log('Payment Status:', session.payment_status);
           console.log('==============================');
 
-          // Update task status to 'paid'
+          // Add amount to tasker's wallet
+          const taskerQuery = 'SELECT wallet_amount FROM users WHERE id = $1';
+          const taskerResult = await pool.query(taskerQuery, [taskerId]);
+          const taskerWalletAmount = taskerResult.rows[0].wallet_amount || 0;
+          const newTaskerWalletAmount = taskerWalletAmount + amountInCents;
+          await pool.query(
+            'UPDATE users SET wallet_amount = $1 WHERE id = $2',
+            [newTaskerWalletAmount, taskerId]
+          );
+
+          // Create payment record for sender (payment)
+          await Payment.createPayment({
+            task_request_id: taskId,
+            amount: amount * -1, // Negative amount for sender
+            currency: 'EUR',
+            stripe_session_id: `${sessionPrefix}_sender_${session.id}`,
+            stripe_payment_intent_id: session.payment_intent,
+            status: 'completed',
+            user_id: senderId,
+            is_payment: true
+          });
+
+          // Create payment record for tasker (earning)
+          await Payment.createPayment({
+            task_request_id: taskId,
+            amount: amount, // Positive amount for tasker
+            currency: 'EUR',
+            stripe_session_id: `${sessionPrefix}_tasker_${session.id}`,
+            stripe_payment_intent_id: session.payment_intent,
+            status: 'completed',
+            user_id: taskerId,
+            is_payment: false
+          });
+
+          // Update task status to paid
           await TaskRequest.updateStatus(taskId, 'paid');
           console.log(`Payment completed and status updated for task ${taskId}`);
-          break;
-        }
 
-        case 'checkout.session.expired': {
-          const session = event.data.object;
-          const taskId = session.metadata.task_id;
-
-          // Update task status back to 'pending'
-          await TaskRequest.updateStatus(taskId, 'pending');
-          console.log(`Payment expired for task ${taskId}`);
           break;
         }
       }

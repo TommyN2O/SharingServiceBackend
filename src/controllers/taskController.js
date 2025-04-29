@@ -3,6 +3,7 @@ const PlannedTask = require('../models/PlannedTask');
 const Message = require('../models/Message');
 const Review = require('../models/Review');
 const pool = require('../config/database');
+const paymentController = require('./paymentController');
 
 const taskController = {
   // Create a new customer request
@@ -220,6 +221,36 @@ const taskController = {
       });
     } catch (error) {
       res.status(400).json({ error: error.message });
+    }
+  },
+
+  // Update task status
+  async updateTaskStatus(req, res) {
+    try {
+      const { taskId } = req.params;
+      const { status } = req.body;
+
+      if (!status) {
+        return res.status(400).json({ error: 'Status is required' });
+      }
+
+      // Update task status
+      const updatedTask = await TaskRequest.updateStatus(taskId, status);
+
+      // If task is marked as completed, handle payment completion
+      if (status === 'completed') {
+        try {
+          await paymentController.handleTaskCompletion(taskId);
+        } catch (error) {
+          console.error('Error handling payment completion:', error);
+          // Don't fail the task status update if payment handling fails
+        }
+      }
+
+      res.json(updatedTask);
+    } catch (error) {
+      console.error('Error updating task status:', error);
+      res.status(500).json({ error: 'Failed to update task status' });
     }
   }
 };

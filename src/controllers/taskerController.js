@@ -7,6 +7,7 @@ const pool = require('../config/database');
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
+const Payment = require('../models/Payment');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -1272,7 +1273,24 @@ const taskerController = {
           });
         }
 
-        // Get the updated task request
+        // If status is completed, handle payment completion
+        if (newStatus.toLowerCase() === 'completed') {
+          // Get the payment record
+          const payment = await Payment.getByTaskRequestId(task_id);
+          if (!payment) {
+            throw new Error('Payment record not found');
+          }
+
+          // Update payment status to completed
+          await Payment.updateStatusToCompleted(task_id);
+
+          // Update tasker's wallet
+          const amountInCents = Math.round(payment.amount * 100);
+          await User.updateWalletAmount(user_id, amountInCents);
+          console.log(`Updated wallet for tasker ${user_id} with amount ${amountInCents} cents`);
+        }
+
+        // Get updated task request details
         const query = `
           SELECT 
             tr.id,
@@ -1280,20 +1298,9 @@ const taskerController = {
             tr.duration,
             tr.status,
             tr.created_at,
+            -- City details
             c.id as city_id,
             c.name as city_name,
-            -- Sender details
-            s.id as sender_id,
-            s.name as sender_name,
-            s.surname as sender_surname,
-            COALESCE(s.profile_photo, '') as sender_profile_photo,
-            -- Tasker details
-            t.id as tasker_id,
-            t.name as tasker_name,
-            t.surname as tasker_surname,
-            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
-            tp.description as tasker_description,
-            tp.hourly_rate as tasker_hourly_rate,
             -- Categories as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -1306,6 +1313,18 @@ const taskerController = {
               JOIN categories cat ON trc.category_id = cat.id
               WHERE trc.task_request_id = tr.id
             ) as categories,
+            -- Sender details
+            s.id as sender_id,
+            s.name as sender_name,
+            s.surname as sender_surname,
+            COALESCE(s.profile_photo, '') as sender_profile_photo,
+            -- Tasker details
+            t.id as tasker_id,
+            t.name as tasker_name,
+            t.surname as tasker_surname,
+            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
+            tp.description as tasker_description,
+            tp.hourly_rate as tasker_hourly_rate,
             -- Availability as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -1316,10 +1335,13 @@ const taskerController = {
               WHERE tra.task_request_id = tr.id
             ) as availability,
             -- Gallery as JSON array
-            (
-              SELECT json_agg(trg.image_url)
-              FROM task_request_gallery trg
-              WHERE trg.task_request_id = tr.id
+            COALESCE(
+              (
+                SELECT json_agg(trg.image_url)
+                FROM task_request_gallery trg
+                WHERE trg.task_request_id = tr.id
+              ),
+              '[]'::json
             ) as gallery
           FROM task_requests tr
           JOIN cities c ON tr.city_id = c.id
@@ -1571,9 +1593,7 @@ const taskerController = {
           (
             SELECT json_agg(json_build_object(
               'id', cat.id,
-              'name', cat.name,
-              'description', cat.description,
-              'image_url', cat.image_url
+              'name', cat.name
             ))
             FROM task_request_categories trc
             JOIN categories cat ON trc.category_id = cat.id
@@ -1679,9 +1699,7 @@ const taskerController = {
           (
             SELECT json_agg(json_build_object(
               'id', cat.id,
-              'name', cat.name,
-              'description', cat.description,
-              'image_url', cat.image_url
+              'name', cat.name
             ))
             FROM task_request_categories trc
             JOIN categories cat ON trc.category_id = cat.id
@@ -1968,6 +1986,97 @@ const taskerController = {
       res.status(500).json({ error: 'Failed to get completed tasks' });
     }
   },
+
+  // Get wallet amount and payment history
+  async getWalletPayments(req, res) {
+    const userId = req.user.id;
+    const client = await pool.connect();
+
+    try {
+      // First get the user's wallet amount
+      const userQuery = `
+        SELECT wallet_amount 
+        FROM users 
+        WHERE id = $1
+      `;
+      const userResult = await client.query(userQuery, [userId]);
+      
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Get all transactions (both earnings and payments)
+      const transactionsQuery = `
+        SELECT 
+          p.id as payment_id,
+          p.amount,
+          p.created_at as payment_date,
+          p.status as payment_status,
+          p.is_payment,
+          tr.id as task_id,
+          tr.status as task_status,
+          CASE 
+            WHEN p.is_payment = true THEN t.name
+            ELSE s.name
+          END as other_party_name,
+          CASE 
+            WHEN p.is_payment = true THEN t.surname
+            ELSE s.surname
+          END as other_party_surname,
+          CASE 
+            WHEN p.is_payment = true THEN 'tasker'
+            ELSE 'sender'
+          END as other_party_role,
+          (
+            SELECT string_agg(cat.name, ', ')
+            FROM task_request_categories trc
+            JOIN categories cat ON trc.category_id = cat.id
+            WHERE trc.task_request_id = tr.id
+          ) as categories
+        FROM payments p
+        JOIN task_requests tr ON p.task_request_id = tr.id
+        JOIN users s ON tr.sender_id = s.id
+        JOIN users t ON tr.tasker_id = t.id
+        WHERE p.user_id = $1
+        AND p.status = 'completed'
+        ORDER BY p.created_at DESC
+      `;
+
+      const transactionsResult = await client.query(transactionsQuery, [userId]);
+
+      // Format the response
+      const response = {
+        wallet_amount: userResult.rows[0].wallet_amount || 0,
+        transactions: transactionsResult.rows.map(row => ({
+          payment_id: row.payment_id,
+          amount: row.is_payment ? row.amount * -1 : row.amount, // Negative for payments made, positive for earnings
+          payment_date: row.payment_date,
+          payment_status: row.payment_status,
+          transaction_type: row.is_payment ? 'payment' : 'earning',
+          task: {
+            id: row.task_id,
+            category: row.categories || '',
+            status: row.task_status
+          },
+          other_party: {
+            role: row.other_party_role,
+            name: row.other_party_name,
+            surname: row.other_party_surname
+          }
+        }))
+      };
+
+      res.json(response);
+    } catch (error) {
+      console.error('Error getting wallet transactions:', error);
+      res.status(500).json({
+        error: 'Failed to get wallet transactions',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    } finally {
+      client.release();
+    }
+  }
 };
 
 module.exports = {

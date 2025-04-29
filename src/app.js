@@ -7,6 +7,7 @@ const Category = require('./models/Category');
 const TaskerProfile = require('./models/TaskerProfile');
 const pool = require('./config/database');
 const City = require('./models/City');
+const Payment = require('./models/Payment');
 const authRoutes = require('./routes/authRoutes');
 const taskerRoutes = require('./routes/taskerRoutes');
 const messageRoutes = require('./routes/messageRoutes');
@@ -175,6 +176,10 @@ async function initializeDatabase() {
     // Initialize category table
     await Category.createCategoryTable();
     console.log('Category table initialized successfully');
+
+    // Initialize Payment table
+    await Payment.initialize();
+    console.log('Payment table initialized successfully');
   } catch (error) {
     console.error('Error initializing database tables:', error);
   }

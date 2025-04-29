@@ -25,7 +25,8 @@ const {
   getPaidTasksSent,
   getPaidTasksReceived,
   getSentCompletedTasks,
-  getReceivedCompletedTasks
+  getReceivedCompletedTasks,
+  getWalletPayments
 } = require('../controllers/taskerController');
 
 // Apply authentication middleware to all routes
@@ -48,6 +49,9 @@ router.get('/tasks/sent/paid', getPaidTasksSent);
 router.get('/tasks/received/paid', getPaidTasksReceived);
 router.get('/tasks/sent', getTasksBySender);
 router.get('/tasks/received', getTaskRequestsReceived);
+
+// Wallet payments route
+router.get('/walletpayments', getWalletPayments);
 
 // Task request routes - parameterized routes last
 router.get('/tasks/sent/:id', getTaskById);
