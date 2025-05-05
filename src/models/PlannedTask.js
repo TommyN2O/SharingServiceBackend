@@ -70,4 +70,4 @@ class PlannedTask extends BaseModel {
   }
 }
 
-module.exports = new PlannedTask(); 
+module.exports = new PlannedTask();

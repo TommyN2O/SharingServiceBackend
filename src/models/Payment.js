@@ -139,7 +139,7 @@ class Payment extends BaseModel {
       data.stripe_payment_intent_id,
       data.status || 'waiting',
       data.user_id,
-      data.is_payment
+      data.is_payment,
     ];
 
     const result = await pool.query(query, values);
@@ -182,4 +182,4 @@ class Payment extends BaseModel {
   }
 }
 
-module.exports = new Payment(); 
+module.exports = new Payment();

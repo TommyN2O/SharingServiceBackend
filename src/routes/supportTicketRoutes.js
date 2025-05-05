@@ -1,4 +1,5 @@
 const express = require('express');
+
 const router = express.Router();
 const supportTicketController = require('../controllers/supportTicketController');
 const auth = require('../middleware/auth');
@@ -12,4 +13,4 @@ router.post('/', supportTicketController.createTicket);
 // Get user's tickets
 router.get('/', supportTicketController.getUserTickets);
 
-module.exports = router; 
+module.exports = router;

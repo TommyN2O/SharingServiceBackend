@@ -1,17 +1,17 @@
+const path = require('path');
+const multer = require('multer');
+const fs = require('fs');
 const TaskerProfile = require('../models/TaskerProfile');
 const CustomerRequest = require('../models/CustomerRequest');
 const PlannedTask = require('../models/PlannedTask');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const pool = require('../config/database');
-const path = require('path');
-const multer = require('multer');
-const fs = require('fs');
 const Payment = require('../models/Payment');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
+  destination(req, file, cb) {
     // Check if the field is for gallery images
     const folder = file.fieldname === 'galleryImages' || file.fieldname === 'gallery' ? 'gallery' : 'profiles';
     const dir = path.join('public', 'images', folder);
@@ -21,18 +21,18 @@ const storage = multer.diskStorage({
     }
     cb(null, dir);
   },
-  filename: function (req, file, cb) {
+  filename(req, file, cb) {
     // Generate unique filename with original extension
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
     const ext = path.extname(file.originalname) || '.jpg'; // Default to .jpg if no extension
     cb(null, uniqueSuffix + ext);
-  }
+  },
 });
 
 const upload = multer({
-  storage: storage,
+  storage,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
     // Accept images and handle content type from Android
@@ -41,15 +41,15 @@ const upload = multer({
     } else {
       cb(new Error('Only image files are allowed'));
     }
-  }
+  },
 });
 
 // Middleware for handling multiple file uploads
 const uploadFields = upload.fields([
   { name: 'profileImage', maxCount: 1 },
-  { name: 'profile_photo', maxCount: 1 },  // Add support for profile_photo field
+  { name: 'profile_photo', maxCount: 1 }, // Add support for profile_photo field
   { name: 'galleryImages', maxCount: 10 },
-  { name: 'gallery', maxCount: 10 }  // Add support for gallery field
+  { name: 'gallery', maxCount: 10 }, // Add support for gallery field
 ]);
 
 const taskerController = {
@@ -58,7 +58,7 @@ const taskerController = {
     try {
       // Get tasker profile with all details
       const profile = await TaskerProfile.getCompleteProfile(req.user.id);
-      
+
       if (!profile) {
         return res.status(404).json({ error: 'Tasker profile not found' });
       }
@@ -86,7 +86,7 @@ const taskerController = {
         console.error('Error parsing tasker profile JSON:', error);
         return res.status(400).json({
           error: 'Invalid tasker profile JSON',
-          details: error.message
+          details: error.message,
         });
       }
 
@@ -95,7 +95,7 @@ const taskerController = {
         hourly_rate,
         categories,
         cities,
-        availability = []
+        availability = [],
       } = taskerProfileData;
 
       // Validate required fields
@@ -106,8 +106,8 @@ const taskerController = {
             description: !!description,
             hourly_rate: !!hourly_rate,
             categories: categories?.length > 0,
-            cities: cities?.length > 0
-          }
+            cities: cities?.length > 0,
+          },
         });
       }
 
@@ -136,7 +136,7 @@ const taskerController = {
           user_id: req.user.id,
           profile_photo: finalProfilePhoto,
           description,
-          hourly_rate: parseFloat(hourly_rate)
+          hourly_rate: parseFloat(hourly_rate),
         });
         console.log('Tasker profile created:', taskerProfile);
 
@@ -186,10 +186,10 @@ const taskerController = {
       } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error in transaction, rolling back:', error);
-        
+
         // Clean up uploaded files in case of error
         if (req.files) {
-          Object.values(req.files).flat().forEach(file => {
+          Object.values(req.files).flat().forEach((file) => {
             if (file.path) {
               fs.unlink(file.path, (err) => {
                 if (err) console.error('Error deleting file:', err);
@@ -197,16 +197,16 @@ const taskerController = {
             }
           });
         }
-        
+
         throw error;
       } finally {
         client.release();
       }
     } catch (error) {
       console.error('Error creating tasker profile:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to create tasker profile',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -227,7 +227,7 @@ const taskerController = {
         console.error('Error parsing tasker profile JSON:', error);
         return res.status(400).json({
           error: 'Invalid tasker profile JSON',
-          details: error.message
+          details: error.message,
         });
       }
 
@@ -237,14 +237,14 @@ const taskerController = {
         categories,
         cities,
         availability = [],
-        deletedGalleryImages = []  // Array of image URLs to delete
+        deletedGalleryImages = [], // Array of image URLs to delete
       } = taskerProfileData;
 
       // Check if user has a tasker profile
       const existingProfile = await TaskerProfile.findByUserId(req.user.id);
       if (!existingProfile) {
         return res.status(404).json({
-          error: 'Tasker profile not found'
+          error: 'Tasker profile not found',
         });
       }
 
@@ -253,7 +253,7 @@ const taskerController = {
       if (req.files && (req.files.profileImage?.[0] || req.files.profile_photo?.[0])) {
         const profilePhotoFile = req.files.profileImage?.[0] || req.files.profile_photo?.[0];
         console.log('New profile photo file received:', profilePhotoFile);
-        
+
         // Delete old profile photo if it exists
         if (finalProfilePhoto) {
           const oldPhotoPath = path.join('public', finalProfilePhoto);
@@ -261,7 +261,7 @@ const taskerController = {
             fs.unlinkSync(oldPhotoPath);
           }
         }
-        
+
         finalProfilePhoto = `images/profiles/${profilePhotoFile.filename}`;
       }
 
@@ -273,9 +273,9 @@ const taskerController = {
         // Delete gallery images if specified
         if (Array.isArray(deletedGalleryImages) && deletedGalleryImages.length > 0) {
           console.log('Deleting gallery images:', deletedGalleryImages);
-          
+
           // Extract relative paths from URLs or full paths
-          const dbImageUrls = deletedGalleryImages.map(url => {
+          const dbImageUrls = deletedGalleryImages.map((url) => {
             // Remove domain and port if it's a full URL
             const urlMatch = url.match(/\/images\/gallery\/[^?#]+/);
             if (urlMatch) {
@@ -292,14 +292,14 @@ const taskerController = {
             `DELETE FROM tasker_gallery 
              WHERE tasker_id = $1 
              AND image_url = ANY(ARRAY[${placeholders}])`,
-            [existingProfile.id, ...dbImageUrls]
+            [existingProfile.id, ...dbImageUrls],
           );
 
           // Delete files from filesystem
           for (const relativePath of dbImageUrls) {
             const imagePath = path.join('public', 'images', relativePath);
             console.log('Attempting to delete file:', imagePath);
-            
+
             if (fs.existsSync(imagePath)) {
               fs.unlinkSync(imagePath);
               console.log('Successfully deleted file:', imagePath);
@@ -316,7 +316,7 @@ const taskerController = {
           hourly_rate: parseFloat(hourly_rate),
           categories,
           cities,
-          availability
+          availability,
         });
 
         // Handle new gallery images if provided
@@ -333,12 +333,11 @@ const taskerController = {
         // Get the complete updated profile
         const completeProfile = await TaskerProfile.getCompleteProfile(req.user.id);
         res.json(completeProfile);
-
       } catch (error) {
         await client.query('ROLLBACK');
         // Clean up any newly uploaded files in case of error
         if (req.files) {
-          Object.values(req.files).flat().forEach(file => {
+          Object.values(req.files).flat().forEach((file) => {
             if (file.path) {
               fs.unlink(file.path, (err) => {
                 if (err) console.error('Error deleting file:', err);
@@ -350,12 +349,11 @@ const taskerController = {
       } finally {
         client.release();
       }
-
     } catch (error) {
       console.error('Error updating tasker profile:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to update tasker profile',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -363,12 +361,14 @@ const taskerController = {
   // Get available tasks
   async getAvailableTasks(req, res) {
     try {
-      const { category, location, minPrice, maxPrice } = req.query;
+      const {
+        category, location, minPrice, maxPrice,
+      } = req.query;
       const tasks = await CustomerRequest.findAvailable({
         category,
         location,
         minPrice,
-        maxPrice
+        maxPrice,
       });
       res.json(tasks);
     } catch (error) {
@@ -379,8 +379,10 @@ const taskerController = {
   // Send offer for a task
   async sendOffer(req, res) {
     try {
-      const { requestId, price, estimated_time, message } = req.body;
-      
+      const {
+        requestId, price, estimated_time, message,
+      } = req.body;
+
       // Check if user has a tasker profile
       const taskerProfile = await TaskerProfile.findByUserId(req.user.id);
       if (!taskerProfile) {
@@ -392,7 +394,7 @@ const taskerController = {
         tasker_id: req.user.id,
         price,
         estimated_time,
-        message
+        message,
       });
 
       // Send notification to customer
@@ -401,7 +403,7 @@ const taskerController = {
         sender_id: req.user.id,
         receiver_id: request.user_id,
         content: `New offer received for your task: ${request.title}`,
-        type: 'notification'
+        type: 'notification',
       });
 
       res.status(201).json(offer);
@@ -414,7 +416,7 @@ const taskerController = {
   async acceptTask(req, res) {
     try {
       const { taskId } = req.params;
-      
+
       // Check if user has a tasker profile
       const taskerProfile = await TaskerProfile.findByUserId(req.user.id);
       if (!taskerProfile) {
@@ -422,13 +424,13 @@ const taskerController = {
       }
 
       const task = await PlannedTask.acceptTask(taskId, req.user.id);
-      
+
       // Send notification to customer
       await Message.create({
         sender_id: req.user.id,
         receiver_id: task.customer_id,
         content: `Tasker has accepted your task: ${task.title}`,
-        type: 'notification'
+        type: 'notification',
       });
 
       res.json(task);
@@ -455,13 +457,13 @@ const taskerController = {
       const { status } = req.body;
 
       const task = await PlannedTask.updateStatus(taskId, status);
-      
+
       // Send notification to customer about status change
       await Message.create({
         sender_id: req.user.id,
         receiver_id: task.customer_id,
         content: `Task status updated to: ${status}`,
-        type: 'notification'
+        type: 'notification',
       });
 
       res.json(task);
@@ -474,7 +476,7 @@ const taskerController = {
   async deleteProfile(req, res) {
     try {
       const userId = req.user.id;
-      
+
       // Check if user has a tasker profile
       const profile = await TaskerProfile.findByUserId(userId);
       if (!profile) {
@@ -530,7 +532,7 @@ const taskerController = {
         timeFrom: req.query.timeFrom ? req.query.timeFrom : null,
         timeTo: req.query.timeTo ? req.query.timeTo : null,
         minPrice: req.query.minPrice ? parseFloat(req.query.minPrice) : null,
-        maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice) : null
+        maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice) : null,
       };
       const profiles = await TaskerProfile.getAllProfiles(filters);
       res.json(profiles);
@@ -545,13 +547,13 @@ const taskerController = {
     try {
       const { id } = req.params;
       console.log('Getting tasker profile by ID:', id);
-      
+
       const profile = await TaskerProfile.getProfileById(id);
-      
+
       if (!profile) {
         return res.status(404).json({ error: 'Tasker profile not found' });
       }
-      
+
       res.json(profile);
     } catch (error) {
       console.error('Error getting tasker profile by ID:', error);
@@ -569,7 +571,7 @@ const taskerController = {
       const existingProfile = await TaskerProfile.findByUserId(req.user.id);
       if (!existingProfile) {
         return res.status(404).json({
-          error: 'Tasker profile not found'
+          error: 'Tasker profile not found',
         });
       }
 
@@ -579,7 +581,7 @@ const taskerController = {
       if (!Array.isArray(availability)) {
         return res.status(400).json({
           error: 'Invalid availability format. Expected an array of availability slots.',
-          received: availability
+          received: availability,
         });
       }
 
@@ -588,14 +590,14 @@ const taskerController = {
         if (!slot || typeof slot !== 'object') {
           return res.status(400).json({
             error: 'Each availability slot must be an object',
-            invalidSlot: slot
+            invalidSlot: slot,
           });
         }
-        
+
         if (!slot.date || !slot.time) {
           return res.status(400).json({
             error: 'Each availability slot must have date and time properties',
-            invalidSlot: slot
+            invalidSlot: slot,
           });
         }
 
@@ -603,7 +605,7 @@ const taskerController = {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(slot.date)) {
           return res.status(400).json({
             error: 'Date must be in YYYY-MM-DD format',
-            invalidDate: slot.date
+            invalidDate: slot.date,
           });
         }
 
@@ -611,23 +613,22 @@ const taskerController = {
         if (!/^([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/.test(slot.time)) {
           return res.status(400).json({
             error: 'Time must be in HH:mm:ss format',
-            invalidTime: slot.time
+            invalidTime: slot.time,
           });
         }
       }
 
       // Use the TaskerProfile update method
       const updatedProfile = await TaskerProfile.update(req.user.id, {
-        availability: availability
+        availability,
       });
 
       res.status(200).json(updatedProfile);
-
     } catch (error) {
       console.error('Error updating tasker availability:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to update availability',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -648,7 +649,7 @@ const taskerController = {
         console.error('Error parsing task request JSON:', error);
         return res.status(400).json({
           error: 'Invalid task request JSON',
-          details: error.message
+          details: error.message,
         });
       }
 
@@ -659,7 +660,7 @@ const taskerController = {
         duration,
         availability,
         sender_id,
-        tasker_id  // This is now the tasker_profile.id
+        tasker_id, // This is now the tasker_profile.id
       } = taskRequestData;
 
       // Start a transaction
@@ -674,7 +675,7 @@ const taskerController = {
         WHERE tp.id = $1
       `;
       const taskerProfileResult = await client.query(taskerProfileQuery, [tasker_id]);
-      
+
       if (taskerProfileResult.rows.length === 0) {
         throw new Error('Tasker profile not found');
       }
@@ -726,7 +727,7 @@ const taskerController = {
         city.id,
         duration,
         sender_id,
-        taskerUserId  // Use the user_id we got from tasker_profiles
+        taskerUserId, // Use the user_id we got from tasker_profiles
       ]);
 
       const taskRequestId = taskRequestResult.rows[0].id;
@@ -737,7 +738,7 @@ const taskerController = {
         await client.query(
           `INSERT INTO task_request_categories (task_request_id, category_id)
            VALUES ($1, $2)`,
-          [taskRequestId, category.id]
+          [taskRequestId, category.id],
         );
       }
       console.log('Added categories');
@@ -748,19 +749,19 @@ const taskerController = {
       await client.query(
         `INSERT INTO task_request_availability (task_request_id, date, time_slot)
          VALUES ($1, $2, $3)`,
-        [taskRequestId, formattedDate, slot.time]
+        [taskRequestId, formattedDate, slot.time],
       );
       console.log('Added availability');
 
       // Handle gallery images if provided
-      let galleryUrls = [];
+      const galleryUrls = [];
       if (req.files?.galleryImages) {
         for (const file of req.files.galleryImages) {
           const imageUrl = `images/gallery/${file.filename}`;
           await client.query(
             `INSERT INTO task_request_gallery (task_request_id, image_url)
              VALUES ($1, $2)`,
-            [taskRequestId, imageUrl]
+            [taskRequestId, imageUrl],
           );
           galleryUrls.push(imageUrl);
         }
@@ -778,25 +779,25 @@ const taskerController = {
         city: {
           id: city.id,
           name: city.name,
-          created_at: city.created_at
+          created_at: city.created_at,
         },
-        categories: categories.map(cat => ({
+        categories: categories.map((cat) => ({
           id: cat.id,
           name: cat.name,
           description: cat.description,
           image_url: cat.image_url,
-          created_at: cat.created_at
+          created_at: cat.created_at,
         })),
         duration,
         availability: [{
           date: formattedDate,
-          time: slot.time
+          time: slot.time,
         }],
         sender: {
           id: sender.id,
           name: sender.name,
           surname: sender.surname,
-          profile_photo: sender.sender_profile_photo
+          profile_photo: sender.sender_profile_photo,
         },
         tasker: {
           id: taskerProfile.id,
@@ -804,22 +805,21 @@ const taskerController = {
           surname: taskerProfile.surname,
           profile_photo: taskerProfile.profile_photo,
           description: taskerProfile.description,
-          hourly_rate: taskerProfile.hourly_rate
+          hourly_rate: taskerProfile.hourly_rate,
         },
         gallery: galleryUrls,
         status: 'pending',
-        created_at: taskRequestResult.rows[0].created_at
+        created_at: taskRequestResult.rows[0].created_at,
       };
 
       res.status(201).json(response);
-
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('Error in transaction, rolling back:', error);
-      
+
       // Clean up any uploaded files in case of error
       if (req.files?.galleryImages) {
-        req.files.galleryImages.forEach(file => {
+        req.files.galleryImages.forEach((file) => {
           if (file.path) {
             fs.unlink(file.path, (err) => {
               if (err) console.error('Error deleting file:', err);
@@ -827,21 +827,21 @@ const taskerController = {
           }
         });
       }
-      
+
       // Return appropriate error message with more detail
       if (error.message.includes('not found')) {
         return res.status(404).json({
-          error: error.message
+          error: error.message,
         });
-      } else if (error.message.includes('not a tasker')) {
+      } if (error.message.includes('not a tasker')) {
         return res.status(400).json({
-          error: error.message
+          error: error.message,
         });
       }
-      
+
       res.status(500).json({
         error: 'Failed to send task request',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     } finally {
       client.release();
@@ -854,7 +854,7 @@ const taskerController = {
     try {
       const sender_id = req.user.id;
       console.log('Getting tasks for sender ID:', sender_id);
-      
+
       const client = await pool.connect();
       try {
         // Debug: Check if tables exist and have data
@@ -864,11 +864,11 @@ const taskerController = {
             (SELECT COUNT(*) FROM task_requests WHERE sender_id = $1) as user_requests,
             (SELECT COUNT(*) FROM users WHERE id = $1) as user_exists
         `, [sender_id]);
-        
+
         console.log('Database status:', {
           totalRequests: tableChecks.rows[0].total_requests,
           userRequests: tableChecks.rows[0].user_requests,
-          userExists: tableChecks.rows[0].user_exists
+          userExists: tableChecks.rows[0].user_exists,
         });
 
         // Get all tasks with related data
@@ -931,12 +931,12 @@ const taskerController = {
         console.log(`Found ${result.rows.length} tasks for user ${sender_id}`);
 
         // Format the response
-        const tasks = result.rows.map(row => ({
+        const tasks = result.rows.map((row) => ({
           id: row.id,
           description: row.description,
           city: {
             id: row.city_id,
-            name: row.city_name
+            name: row.city_name,
           },
           categories: row.categories || [],
           duration: row.duration,
@@ -945,7 +945,7 @@ const taskerController = {
             id: row.sender_id,
             name: row.sender_name,
             surname: row.sender_surname,
-            profile_photo: row.sender_profile_photo
+            profile_photo: row.sender_profile_photo,
           },
           tasker: {
             id: row.tasker_id,
@@ -953,11 +953,11 @@ const taskerController = {
             surname: row.tasker_surname,
             profile_photo: row.tasker_profile_photo,
             description: row.tasker_description,
-            hourly_rate: row.tasker_hourly_rate
+            hourly_rate: row.tasker_hourly_rate,
           },
           gallery: row.gallery || [],
           status: row.status,
-          created_at: row.created_at
+          created_at: row.created_at,
         }));
 
         // Debug: Log sample task if available
@@ -975,7 +975,7 @@ const taskerController = {
       console.error('Error getting tasks by sender:', error);
       res.status(500).json({
         error: 'Failed to get tasks',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -985,7 +985,7 @@ const taskerController = {
     try {
       const tasker_id = req.user.id;
       console.log('Getting task requests for tasker ID:', tasker_id);
-      
+
       const client = await pool.connect();
       try {
         // Debug: Check if tables exist and have data
@@ -995,11 +995,11 @@ const taskerController = {
             (SELECT COUNT(*) FROM task_requests WHERE tasker_id = $1) as tasker_requests,
             (SELECT COUNT(*) FROM users WHERE id = $1) as user_exists
         `, [tasker_id]);
-        
+
         console.log('Database status:', {
           totalRequests: tableChecks.rows[0].total_requests,
           taskerRequests: tableChecks.rows[0].tasker_requests,
-          userExists: tableChecks.rows[0].user_exists
+          userExists: tableChecks.rows[0].user_exists,
         });
 
         // Get all task requests with related data
@@ -1064,12 +1064,12 @@ const taskerController = {
         console.log(`Found ${result.rows.length} task requests for tasker ${tasker_id}`);
 
         // Format the response
-        const taskRequests = result.rows.map(row => ({
+        const taskRequests = result.rows.map((row) => ({
           id: row.id,
           description: row.description,
           city: {
             id: row.city_id,
-            name: row.city_name
+            name: row.city_name,
           },
           categories: row.categories || [],
           duration: row.duration,
@@ -1078,7 +1078,7 @@ const taskerController = {
             id: row.sender_id,
             name: row.sender_name,
             surname: row.sender_surname,
-            profile_photo: row.sender_profile_photo
+            profile_photo: row.sender_profile_photo,
           },
           tasker: {
             id: row.tasker_id,
@@ -1086,11 +1086,11 @@ const taskerController = {
             surname: row.tasker_surname,
             profile_photo: row.tasker_profile_photo,
             description: row.tasker_description,
-            hourly_rate: row.tasker_hourly_rate
+            hourly_rate: row.tasker_hourly_rate,
           },
           gallery: row.gallery || [],
           status: row.status,
-          created_at: row.created_at
+          created_at: row.created_at,
         }));
 
         // Debug: Log sample task request if available
@@ -1108,7 +1108,7 @@ const taskerController = {
       console.error('Error getting task requests for tasker:', error);
       res.status(500).json({
         error: 'Failed to get task requests',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -1119,7 +1119,7 @@ const taskerController = {
       const tasker_id = req.user.id;
       const task_id = req.params.id;
       console.log('Getting task request ID:', task_id, 'for tasker ID:', tasker_id);
-      
+
       const client = await pool.connect();
       try {
         // Get task request with related data
@@ -1183,7 +1183,7 @@ const taskerController = {
 
         if (result.rows.length === 0) {
           return res.status(404).json({
-            error: 'Task request not found or you do not have permission to view it'
+            error: 'Task request not found or you do not have permission to view it',
           });
         }
 
@@ -1194,7 +1194,7 @@ const taskerController = {
           description: row.description,
           city: {
             id: row.city_id,
-            name: row.city_name
+            name: row.city_name,
           },
           categories: row.categories || [],
           duration: row.duration,
@@ -1203,7 +1203,7 @@ const taskerController = {
             id: row.sender_id,
             name: row.sender_name,
             surname: row.sender_surname,
-            profile_photo: row.sender_profile_photo
+            profile_photo: row.sender_profile_photo,
           },
           tasker: {
             id: row.tasker_id,
@@ -1211,11 +1211,11 @@ const taskerController = {
             surname: row.tasker_surname,
             profile_photo: row.tasker_profile_photo,
             description: row.tasker_description,
-            hourly_rate: row.tasker_hourly_rate
+            hourly_rate: row.tasker_hourly_rate,
           },
           gallery: row.gallery || [],
           status: row.status,
-          created_at: row.created_at
+          created_at: row.created_at,
         };
 
         console.log('Found task request:', JSON.stringify(taskRequest, null, 2));
@@ -1227,7 +1227,7 @@ const taskerController = {
       console.error('Error getting task request by ID:', error);
       res.status(500).json({
         error: 'Failed to get task request',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -1238,12 +1238,12 @@ const taskerController = {
       const user_id = req.user.id;
       const task_id = req.params.id;
       const { status } = req.body;
-      
+
       console.log('Updating task request ID:', task_id, 'for user ID:', user_id, 'with status:', status);
-      
+
       if (!status) {
         return res.status(400).json({
-          error: 'Status is required in request body'
+          error: 'Status is required in request body',
         });
       }
 
@@ -1254,12 +1254,12 @@ const taskerController = {
         // First get the tasker's profile
         const taskerProfileResult = await client.query(
           'SELECT id FROM tasker_profiles WHERE user_id = $1',
-          [user_id]
+          [user_id],
         );
 
         if (taskerProfileResult.rows.length === 0) {
           return res.status(403).json({
-            error: 'Tasker profile not found'
+            error: 'Tasker profile not found',
           });
         }
 
@@ -1267,7 +1267,7 @@ const taskerController = {
 
         // Map 'Accepted' to 'Waiting for Payment'
         const newStatus = status === 'Accepted' ? 'Waiting for Payment' : status;
-        
+
         // Update the status using tasker_profile_id
         const updateResult = await client.query(`
           UPDATE task_requests
@@ -1279,7 +1279,7 @@ const taskerController = {
 
         if (updateResult.rows.length === 0) {
           return res.status(404).json({
-            error: 'Task request not found or you do not have permission to update it'
+            error: 'Task request not found or you do not have permission to update it',
           });
         }
 
@@ -1362,7 +1362,7 @@ const taskerController = {
         `;
 
         const result = await client.query(query, [task_id]);
-        
+
         await client.query('COMMIT');
 
         // Format the response
@@ -1372,7 +1372,7 @@ const taskerController = {
           description: row.description,
           city: {
             id: row.city_id,
-            name: row.city_name
+            name: row.city_name,
           },
           categories: row.categories || [],
           duration: row.duration,
@@ -1381,7 +1381,7 @@ const taskerController = {
             id: row.sender_id,
             name: row.sender_name,
             surname: row.sender_surname,
-            profile_photo: row.sender_profile_photo
+            profile_photo: row.sender_profile_photo,
           },
           tasker: {
             id: row.tasker_id,
@@ -1389,11 +1389,11 @@ const taskerController = {
             surname: row.tasker_surname,
             profile_photo: row.tasker_profile_photo,
             description: row.tasker_description,
-            hourly_rate: row.tasker_hourly_rate
+            hourly_rate: row.tasker_hourly_rate,
           },
           gallery: row.gallery || [],
           status: row.status,
-          created_at: row.created_at
+          created_at: row.created_at,
         };
 
         console.log('Updated task request:', JSON.stringify(taskRequest, null, 2));
@@ -1408,7 +1408,7 @@ const taskerController = {
       console.error('Error updating task request status:', error);
       res.status(500).json({
         error: 'Failed to update task request status',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -1419,7 +1419,7 @@ const taskerController = {
       const sender_id = req.user.id;
       const task_id = req.params.id;
       console.log('Getting task ID:', task_id, 'for sender ID:', sender_id);
-      
+
       const client = await pool.connect();
       try {
         // Get task with related data
@@ -1483,7 +1483,7 @@ const taskerController = {
 
         if (result.rows.length === 0) {
           return res.status(404).json({
-            error: 'Task not found or you do not have permission to view it'
+            error: 'Task not found or you do not have permission to view it',
           });
         }
 
@@ -1494,7 +1494,7 @@ const taskerController = {
           description: row.description,
           city: {
             id: row.city_id,
-            name: row.city_name
+            name: row.city_name,
           },
           categories: row.categories || [],
           duration: row.duration,
@@ -1503,7 +1503,7 @@ const taskerController = {
             id: row.sender_id,
             name: row.sender_name,
             surname: row.sender_surname,
-            profile_photo: row.sender_profile_photo
+            profile_photo: row.sender_profile_photo,
           },
           tasker: {
             id: row.tasker_id,
@@ -1511,11 +1511,11 @@ const taskerController = {
             surname: row.tasker_surname,
             profile_photo: row.tasker_profile_photo,
             description: row.tasker_description,
-            hourly_rate: row.tasker_hourly_rate
+            hourly_rate: row.tasker_hourly_rate,
           },
           gallery: row.gallery || [],
           status: row.status,
-          created_at: row.created_at
+          created_at: row.created_at,
         };
 
         console.log('Found task:', JSON.stringify(task, null, 2));
@@ -1527,7 +1527,7 @@ const taskerController = {
       console.error('Error getting task by ID:', error);
       res.status(500).json({
         error: 'Failed to get task',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -1578,7 +1578,7 @@ const taskerController = {
       console.error('Error inserting test data:', error);
       res.status(500).json({
         error: 'Failed to insert test data',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -1651,12 +1651,12 @@ const taskerController = {
 
       const result = await client.query(query, [userId]);
 
-      const paidTasks = result.rows.map(row => ({
+      const paidTasks = result.rows.map((row) => ({
         id: row.id,
         description: row.description,
         city: {
           id: row.city_id,
-          name: row.city_name
+          name: row.city_name,
         },
         categories: row.categories || [],
         duration: row.duration,
@@ -1665,7 +1665,7 @@ const taskerController = {
           id: row.sender_id,
           name: row.sender_name,
           surname: row.sender_surname,
-          profile_photo: row.sender_profile_photo
+          profile_photo: row.sender_profile_photo,
         },
         tasker: {
           id: row.tasker_id,
@@ -1673,11 +1673,11 @@ const taskerController = {
           surname: row.tasker_surname,
           profile_photo: row.tasker_profile_photo,
           description: row.tasker_description,
-          hourly_rate: row.tasker_hourly_rate
+          hourly_rate: row.tasker_hourly_rate,
         },
         gallery: row.gallery || [],
         status: row.status,
-        created_at: row.created_at
+        created_at: row.created_at,
       }));
 
       res.json(paidTasks);
@@ -1757,12 +1757,12 @@ const taskerController = {
 
       const result = await client.query(query, [taskerId]);
 
-      const paidTasks = result.rows.map(row => ({
+      const paidTasks = result.rows.map((row) => ({
         id: row.id,
         description: row.description,
         city: {
           id: row.city_id,
-          name: row.city_name
+          name: row.city_name,
         },
         categories: row.categories || [],
         duration: row.duration,
@@ -1771,7 +1771,7 @@ const taskerController = {
           id: row.sender_id,
           name: row.sender_name,
           surname: row.sender_surname,
-          profile_photo: row.sender_profile_photo
+          profile_photo: row.sender_profile_photo,
         },
         tasker: {
           id: row.tasker_id,
@@ -1779,11 +1779,11 @@ const taskerController = {
           surname: row.tasker_surname,
           profile_photo: row.tasker_profile_photo,
           description: row.tasker_description,
-          hourly_rate: row.tasker_hourly_rate
+          hourly_rate: row.tasker_hourly_rate,
         },
         gallery: row.gallery || [],
         status: row.status,
-        created_at: row.created_at
+        created_at: row.created_at,
       }));
 
       res.json(paidTasks);
@@ -1859,13 +1859,13 @@ const taskerController = {
       `;
 
       const result = await pool.query(query, [req.user.id]);
-      
-      const tasks = result.rows.map(row => ({
+
+      const tasks = result.rows.map((row) => ({
         id: row.id,
         description: row.description,
         city: {
           id: row.city_id,
-          name: row.city_name
+          name: row.city_name,
         },
         categories: row.categories || [],
         duration: row.duration,
@@ -1874,7 +1874,7 @@ const taskerController = {
           id: row.sender_id,
           name: row.sender_name,
           surname: row.sender_surname,
-          profile_photo: row.sender_profile_photo
+          profile_photo: row.sender_profile_photo,
         },
         tasker: {
           id: row.tasker_id,
@@ -1882,11 +1882,11 @@ const taskerController = {
           surname: row.tasker_surname,
           profile_photo: row.tasker_profile_photo,
           description: row.tasker_description,
-          hourly_rate: row.tasker_hourly_rate
+          hourly_rate: row.tasker_hourly_rate,
         },
         gallery: row.gallery || [],
         status: row.status,
-        created_at: row.created_at
+        created_at: row.created_at,
       }));
 
       res.json(tasks);
@@ -1960,13 +1960,13 @@ const taskerController = {
       `;
 
       const result = await pool.query(query, [req.user.id]);
-      
-      const tasks = result.rows.map(row => ({
+
+      const tasks = result.rows.map((row) => ({
         id: row.id,
         description: row.description,
         city: {
           id: row.city_id,
-          name: row.city_name
+          name: row.city_name,
         },
         categories: row.categories || [],
         duration: row.duration,
@@ -1975,7 +1975,7 @@ const taskerController = {
           id: row.sender_id,
           name: row.sender_name,
           surname: row.sender_surname,
-          profile_photo: row.sender_profile_photo
+          profile_photo: row.sender_profile_photo,
         },
         tasker: {
           id: row.tasker_id,
@@ -1983,11 +1983,11 @@ const taskerController = {
           surname: row.tasker_surname,
           profile_photo: row.tasker_profile_photo,
           description: row.tasker_description,
-          hourly_rate: row.tasker_hourly_rate
+          hourly_rate: row.tasker_hourly_rate,
         },
         gallery: row.gallery || [],
         status: row.status,
-        created_at: row.created_at
+        created_at: row.created_at,
       }));
 
       res.json(tasks);
@@ -2010,7 +2010,7 @@ const taskerController = {
         WHERE id = $1
       `;
       const userResult = await client.query(userQuery, [userId]);
-      
+
       if (userResult.rows.length === 0) {
         return res.status(404).json({ error: 'User not found' });
       }
@@ -2057,7 +2057,7 @@ const taskerController = {
       // Format the response
       const response = {
         wallet_amount: userResult.rows[0].wallet_amount || 0,
-        transactions: transactionsResult.rows.map(row => ({
+        transactions: transactionsResult.rows.map((row) => ({
           payment_id: row.payment_id,
           amount: row.is_payment ? row.amount * -1 : row.amount, // Negative for payments made, positive for earnings
           payment_date: row.payment_date,
@@ -2066,14 +2066,14 @@ const taskerController = {
           task: {
             id: row.task_id,
             category: row.categories || '',
-            status: row.task_status
+            status: row.task_status,
           },
           other_party: {
             role: row.other_party_role,
             name: row.other_party_name,
-            surname: row.other_party_surname
-          }
-        }))
+            surname: row.other_party_surname,
+          },
+        })),
       };
 
       res.json(response);
@@ -2081,15 +2081,15 @@ const taskerController = {
       console.error('Error getting wallet transactions:', error);
       res.status(500).json({
         error: 'Failed to get wallet transactions',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     } finally {
       client.release();
     }
-  }
+  },
 };
 
 module.exports = {
   ...taskerController,
-  uploadFields
-}; 
+  uploadFields,
+};

@@ -23,15 +23,21 @@ const userController = {
   // Register new user
   async register(req, res) {
     try {
-      const { name, surname, email, password, date_of_birth, dateOfBirth, birthDate } = req.body;
+      const {
+        name, surname, email, password, date_of_birth, dateOfBirth, birthDate,
+      } = req.body;
       // Try all possible date field names
       const finalBirthDate = date_of_birth || dateOfBirth || birthDate;
-      
-      console.log('Received registration request:', { name, surname, email, birthDate: finalBirthDate });
+
+      console.log('Received registration request:', {
+        name, surname, email, birthDate: finalBirthDate,
+      });
 
       // Validate required fields
       if (!name || !surname || !email || !password || !finalBirthDate) {
-        console.log('Missing required fields:', { name, surname, email, birthDate: finalBirthDate });
+        console.log('Missing required fields:', {
+          name, surname, email, birthDate: finalBirthDate,
+        });
         return res.status(400).json({
           error: 'Missing required fields',
           missing: {
@@ -39,8 +45,8 @@ const userController = {
             surname: !surname,
             email: !email,
             password: !password,
-            birthDate: !finalBirthDate
-          }
+            birthDate: !finalBirthDate,
+          },
         });
       }
 
@@ -49,7 +55,7 @@ const userController = {
       if (existingUser) {
         console.log('User already exists:', email);
         return res.status(409).json({
-          error: 'User with this email already exists'
+          error: 'User with this email already exists',
         });
       }
 
@@ -59,7 +65,7 @@ const userController = {
         surname,
         email,
         password,
-        date_of_birth: finalBirthDate
+        date_of_birth: finalBirthDate,
       });
 
       // Use createToken method instead of generating new token
@@ -68,7 +74,7 @@ const userController = {
       console.log('User registered successfully:', {
         userId: user.id,
         email: user.email,
-        dateOfBirth: user.date_of_birth
+        dateOfBirth: user.date_of_birth,
       });
 
       res.status(201).json({
@@ -78,23 +84,23 @@ const userController = {
           surname: user.surname,
           email: user.email,
           date_of_birth: user.date_of_birth,
-          profile_photo: ''
+          profile_photo: '',
         },
-        token
+        token,
       });
     } catch (error) {
       console.error('Error registering user:', error);
-      
+
       // Handle specific database errors
       if (error.code === '23505' && error.constraint === 'users_email_key') {
         return res.status(409).json({
-          error: 'User with this email already exists'
+          error: 'User with this email already exists',
         });
       }
 
       res.status(500).json({
         error: 'Internal server error',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -108,7 +114,7 @@ const userController = {
       const user = await User.getByEmail(email);
       if (!user) {
         return res.status(401).json({
-          error: 'Invalid credentials'
+          error: 'Invalid credentials',
         });
       }
 
@@ -116,7 +122,7 @@ const userController = {
       const isValidPassword = await User.verifyPassword(password, user.password_hash);
       if (!isValidPassword) {
         return res.status(401).json({
-          error: 'Invalid credentials'
+          error: 'Invalid credentials',
         });
       }
 
@@ -134,15 +140,15 @@ const userController = {
           surname: user.surname,
           email: user.email,
           date_of_birth: user.date_of_birth,
-          isTasker: !!taskerProfile
+          isTasker: !!taskerProfile,
         },
-        token
+        token,
       });
     } catch (error) {
       console.error('Error logging in:', error);
       res.status(500).json({
         error: 'Internal server error',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -164,11 +170,11 @@ const userController = {
       const userId = req.user.id; // From auth middleware
       const user = await User.getById(userId);
       console.log('User data from DB:', user);
-      
+
       if (!user) {
         console.log('User not found in database');
         return res.status(404).json({
-          error: 'User not found'
+          error: 'User not found',
         });
       }
 
@@ -180,7 +186,7 @@ const userController = {
         date_of_birth: user.date_of_birth,
         created_at: user.created_at,
         is_tasker: user.is_tasker,
-        profile_photo: user.profile_photo || ''
+        profile_photo: user.profile_photo || '',
       };
       console.log('Sending response:', response);
 
@@ -188,7 +194,7 @@ const userController = {
     } catch (error) {
       console.error('Error getting user profile:', error);
       res.status(500).json({
-        error: 'Internal server error'
+        error: 'Internal server error',
       });
     }
   },
@@ -201,7 +207,7 @@ const userController = {
       console.log('Files:', req.files);
 
       const userId = req.user.id;
-      
+
       // Parse the profile_data from the request body
       let userData;
       try {
@@ -210,7 +216,7 @@ const userController = {
       } catch (error) {
         console.error('Error parsing profile data:', error);
         return res.status(400).json({
-          error: 'Invalid profile data'
+          error: 'Invalid profile data',
         });
       }
 
@@ -225,7 +231,7 @@ const userController = {
       const updateData = {
         name: fullname,
         surname,
-        date_of_birth: birthdate
+        date_of_birth: birthdate,
       };
 
       // Handle profile photo if provided
@@ -233,7 +239,7 @@ const userController = {
         const file = req.files.profile_photo[0];
         const photoPath = `images/profiles/${file.filename}`;
         console.log('New profile photo path:', photoPath);
-        
+
         // Update profile photo separately
         await User.updateProfilePhoto(userId, photoPath);
       }
@@ -256,12 +262,12 @@ const userController = {
         date_of_birth: finalUser.date_of_birth,
         created_at: finalUser.created_at,
         is_tasker: finalUser.is_tasker,
-        profile_photo: finalUser.profile_photo || ''
+        profile_photo: finalUser.profile_photo || '',
       });
     } catch (error) {
       console.error('Error updating user profile:', error);
       res.status(500).json({
-        error: 'Internal server error'
+        error: 'Internal server error',
       });
     }
   },
@@ -292,7 +298,7 @@ const userController = {
       const { taskerId } = req.body;
       const savedTasker = await pool.query(
         'INSERT INTO saved_taskers (customer_id, tasker_id) VALUES ($1, $2) RETURNING *',
-        [req.user.id, taskerId]
+        [req.user.id, taskerId],
       );
       res.status(201).json(savedTasker.rows[0]);
     } catch (error) {
@@ -327,12 +333,12 @@ const userController = {
       const users = await User.getAllUsers();
       res.status(200).json({
         users,
-        total: users.length
+        total: users.length,
       });
     } catch (error) {
       console.error('Error getting all users:', error);
       res.status(500).json({
-        error: 'Internal server error'
+        error: 'Internal server error',
       });
     }
   },
@@ -342,10 +348,10 @@ const userController = {
     try {
       const userId = req.params.id;
       const user = await User.getCredentialsById(userId);
-      
+
       if (!user) {
         return res.status(404).json({
-          error: 'User not found'
+          error: 'User not found',
         });
       }
 
@@ -357,13 +363,13 @@ const userController = {
           email: user.email,
           password_hash: user.password_hash,
           date_of_birth: user.date_of_birth,
-          created_at: user.created_at
-        }
+          created_at: user.created_at,
+        },
       });
     } catch (error) {
       console.error('Error getting user credentials:', error);
       res.status(500).json({
-        error: 'Internal server error'
+        error: 'Internal server error',
       });
     }
   },
@@ -373,10 +379,10 @@ const userController = {
     try {
       const userId = req.params.id;
       const user = await User.getUserDetailsById(userId);
-      
+
       if (!user) {
         return res.status(404).json({
-          error: 'User not found'
+          error: 'User not found',
         });
       }
 
@@ -390,13 +396,13 @@ const userController = {
           created_at: user.created_at,
           is_tasker: user.is_tasker,
           profile_photo: user.profile_photo || '',
-          password_hash: user.password_hash
-        }
+          password_hash: user.password_hash,
+        },
       });
     } catch (error) {
       console.error('Error getting user details:', error);
       res.status(500).json({
-        error: 'Internal server error'
+        error: 'Internal server error',
       });
     }
   },
@@ -406,11 +412,11 @@ const userController = {
     try {
       const userId = req.params.id;
       console.log('Getting complete data for user:', userId);
-      
+
       // Get user with tasker profile
       const user = await User.getUserWithTaskerProfile(userId);
       console.log('User data:', user);
-      
+
       if (!user) {
         console.log('User not found');
         return res.status(404).json({ error: 'User not found' });
@@ -438,7 +444,7 @@ const userController = {
           email: user.email,
           date_of_birth: user.date_of_birth,
           is_tasker: user.is_tasker,
-          created_at: user.created_at
+          created_at: user.created_at,
         },
         tasker_profile: user.is_tasker ? {
           id: user.tasker_profile_id,
@@ -447,9 +453,9 @@ const userController = {
           hourly_rate: user.hourly_rate,
           categories: taskerProfile?.categories || [],
           cities: taskerProfile?.cities || [],
-          availability: taskerProfile?.availability || []
+          availability: taskerProfile?.availability || [],
         } : null,
-        dashboard: dashboard
+        dashboard,
       };
 
       console.log('Sending complete data:', completeData);
@@ -466,7 +472,7 @@ const userController = {
       const { taskerId } = req.params;
       await pool.query(
         'DELETE FROM saved_taskers WHERE customer_id = $1 AND tasker_id = $2',
-        [req.user.id, taskerId]
+        [req.user.id, taskerId],
       );
       res.status(200).json({ message: 'Tasker removed from saved list' });
     } catch (error) {
@@ -483,14 +489,14 @@ const userController = {
       // Validate input
       if (!currentPassword || !newPassword) {
         return res.status(400).json({
-          error: 'Current password and new password are required'
+          error: 'Current password and new password are required',
         });
       }
 
       // Validate new password
       if (newPassword.length < 6) {
         return res.status(400).json({
-          error: 'New password must be at least 6 characters long'
+          error: 'New password must be at least 6 characters long',
         });
       }
 
@@ -498,28 +504,28 @@ const userController = {
       await User.updatePassword(userId, currentPassword, newPassword);
 
       res.status(200).json({
-        message: 'Password updated successfully'
+        message: 'Password updated successfully',
       });
     } catch (error) {
       console.error('Error changing password:', error);
-      
+
       if (error.message === 'Current password is incorrect') {
         return res.status(401).json({
-          error: 'Current password is incorrect'
+          error: 'Current password is incorrect',
         });
       }
 
       if (error.message === 'User not found') {
         return res.status(404).json({
-          error: 'User not found'
+          error: 'User not found',
         });
       }
 
       res.status(500).json({
-        error: 'Internal server error'
+        error: 'Internal server error',
       });
     }
-  }
+  },
 };
 
-module.exports = userController; 
+module.exports = userController;

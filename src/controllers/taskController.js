@@ -18,7 +18,7 @@ const taskController = {
         due_date,
         gallery_images,
         needed_time,
-        category_id
+        category_id,
       } = req.body;
 
       const request = await CustomerRequest.create({
@@ -31,7 +31,7 @@ const taskController = {
         due_date,
         gallery_images,
         needed_time,
-        category_id
+        category_id,
       });
 
       res.status(201).json(request);
@@ -45,7 +45,7 @@ const taskController = {
     try {
       const { requestId } = req.params;
       const request = await CustomerRequest.getRequestWithOffers(requestId);
-      
+
       if (!request) {
         return res.status(404).json({ error: 'Request not found' });
       }
@@ -62,7 +62,7 @@ const taskController = {
       const { offerId } = req.params;
       const offer = await pool.query(
         'SELECT * FROM customer_request_offers WHERE id = $1',
-        [offerId]
+        [offerId],
       );
 
       if (!offer.rows[0]) {
@@ -77,20 +77,20 @@ const taskController = {
         description: offer.rows[0].description,
         location: offer.rows[0].location,
         date: offer.rows[0].suggest_date,
-        time: offer.rows[0].suggest_time
+        time: offer.rows[0].suggest_time,
       });
 
       // Update offer status
       await pool.query(
         'UPDATE customer_request_offers SET status = $1 WHERE id = $2',
-        ['accepted', offerId]
+        ['accepted', offerId],
       );
 
       // Send notification message to tasker
       await Message.create({
         sender_id: req.user.id,
         receiver_id: offer.rows[0].tasker_id,
-        message: 'Your offer has been accepted'
+        message: 'Your offer has been accepted',
       });
 
       res.status(201).json(plannedTask);
@@ -105,7 +105,7 @@ const taskController = {
       const { offerId } = req.params;
       const offer = await pool.query(
         'SELECT * FROM customer_request_offers WHERE id = $1',
-        [offerId]
+        [offerId],
       );
 
       if (!offer.rows[0]) {
@@ -115,14 +115,14 @@ const taskController = {
       // Update offer status
       await pool.query(
         'UPDATE customer_request_offers SET status = $1 WHERE id = $2',
-        ['declined', offerId]
+        ['declined', offerId],
       );
 
       // Send notification message to tasker
       await Message.create({
         sender_id: req.user.id,
         receiver_id: offer.rows[0].tasker_id,
-        message: 'Your offer has been declined'
+        message: 'Your offer has been declined',
       });
 
       res.json({ message: 'Offer declined successfully' });
@@ -151,7 +151,7 @@ const taskController = {
       await Message.create({
         sender_id: req.user.id,
         receiver_id: task.tasker_id,
-        message: 'Customer has accepted the task'
+        message: 'Customer has accepted the task',
       });
 
       res.json(updatedTask);
@@ -184,7 +184,7 @@ const taskController = {
         reviewer_id: req.user.id,
         reviewee_id: task.tasker_id,
         rating,
-        review
+        review,
       });
 
       // Update tasker's rating
@@ -215,9 +215,9 @@ const taskController = {
       `;
 
       const result = await pool.query(query);
-      
+
       res.json({
-        tasks: result.rows
+        tasks: result.rows,
       });
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -252,7 +252,7 @@ const taskController = {
       console.error('Error updating task status:', error);
       res.status(500).json({ error: 'Failed to update task status' });
     }
-  }
+  },
 };
 
-module.exports = taskController; 
+module.exports = taskController;

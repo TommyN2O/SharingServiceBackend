@@ -1,4 +1,5 @@
 const express = require('express');
+
 const router = express.Router();
 const auth = require('../middleware/auth');
 const {
@@ -8,7 +9,7 @@ const {
   getChat,
   createChat,
   getChatMessages,
-  getUserChats
+  getUserChats,
 } = require('../controllers/messageController');
 
 // Apply authentication middleware to all routes
@@ -35,4 +36,4 @@ router.get('/messages/:userId', getMessages);
 // Send a message
 router.post('/send', sendMessage);
 
-module.exports = router; 
+module.exports = router;

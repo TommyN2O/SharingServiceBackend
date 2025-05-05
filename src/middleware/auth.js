@@ -5,7 +5,7 @@ const auth = async (req, res, next) => {
   try {
     const authHeader = req.header('Authorization');
     console.log('Auth header:', authHeader);
-    
+
     if (!authHeader) {
       return res.status(401).json({ error: 'No token provided' });
     }
@@ -16,7 +16,7 @@ const auth = async (req, res, next) => {
 
     const token = authHeader.replace('Bearer ', '');
     console.log('Token:', token);
-    
+
     if (!token) {
       return res.status(401).json({ error: 'No token provided' });
     }
@@ -25,7 +25,7 @@ const auth = async (req, res, next) => {
       // Use the fixed secret for verification
       const decoded = jwt.verify(token, 'sharing_service_secret_key_2024');
       console.log('Decoded token:', decoded);
-      
+
       // Get user to verify token matches stored token
       const user = await User.getById(decoded.id);
       console.log('User from DB:', user);
@@ -37,7 +37,7 @@ const auth = async (req, res, next) => {
       req.user = {
         id: decoded.id,
         email: decoded.email,
-        isTasker: decoded.isTasker || false
+        isTasker: decoded.isTasker || false,
       };
       console.log('Set user in request:', req.user);
 
@@ -55,4 +55,4 @@ const auth = async (req, res, next) => {
   }
 };
 
-module.exports = auth; 
+module.exports = auth;

@@ -104,7 +104,7 @@ const lithuanianCities = [
   { id: 103, name: 'Barstyčiai' },
   { id: 104, name: 'Alsėdžiai' },
   { id: 105, name: 'Kuliai' },
-  { id: 106, name: 'Panemunė' }
+  { id: 106, name: 'Panemunė' },
 ];
 
-module.exports = lithuanianCities; 
+module.exports = lithuanianCities;

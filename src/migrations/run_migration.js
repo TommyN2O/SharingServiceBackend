@@ -1,6 +1,6 @@
-const pool = require('../config/database');
 const fs = require('fs');
 const path = require('path');
+const pool = require('../config/database');
 
 async function runMigration() {
   const client = await pool.connect();
@@ -8,7 +8,7 @@ async function runMigration() {
     // Read the migration SQL
     const migrationSQL = fs.readFileSync(
       path.join(__dirname, 'add_updated_at_to_tasker_profiles.sql'),
-      'utf8'
+      'utf8',
     );
 
     // Run the migration
@@ -26,4 +26,4 @@ async function runMigration() {
   }
 }
 
-runMigration(); 
+runMigration();

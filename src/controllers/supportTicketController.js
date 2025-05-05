@@ -11,7 +11,7 @@ const supportTicketController = {
       // Validate input
       if (!type || !content) {
         return res.status(400).json({
-          error: 'Type and content are required'
+          error: 'Type and content are required',
         });
       }
 
@@ -19,7 +19,7 @@ const supportTicketController = {
       const user = await User.getById(userId);
       if (!user) {
         return res.status(404).json({
-          error: 'User not found'
+          error: 'User not found',
         });
       }
 
@@ -30,7 +30,7 @@ const supportTicketController = {
         sender_surname: user.surname,
         sender_email: user.email,
         type,
-        content
+        content,
       });
 
       res.status(201).json({
@@ -44,13 +44,13 @@ const supportTicketController = {
           type: ticket.type,
           content: ticket.content,
           created_at: ticket.created_at,
-          status: ticket.status
-        }
+          status: ticket.status,
+        },
       });
     } catch (error) {
       console.error('Error creating support ticket:', error);
       res.status(500).json({
-        error: 'Internal server error'
+        error: 'Internal server error',
       });
     }
   },
@@ -62,7 +62,7 @@ const supportTicketController = {
       const tickets = await SupportTicket.getTicketsBySenderId(userId);
 
       res.status(200).json({
-        tickets: tickets.map(ticket => ({
+        tickets: tickets.map((ticket) => ({
           id: ticket.id,
           sender_id: ticket.sender_id,
           sender_name: ticket.sender_name,
@@ -71,16 +71,16 @@ const supportTicketController = {
           type: ticket.type,
           content: ticket.content,
           created_at: ticket.created_at,
-          status: ticket.status
-        }))
+          status: ticket.status,
+        })),
       });
     } catch (error) {
       console.error('Error getting user tickets:', error);
       res.status(500).json({
-        error: 'Internal server error'
+        error: 'Internal server error',
       });
     }
-  }
+  },
 };
 
-module.exports = supportTicketController; 
+module.exports = supportTicketController;

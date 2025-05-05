@@ -51,7 +51,7 @@ class TaskRequest extends BaseModel {
         AND column_name = 'duration'
       `;
       const result = await pool.query(checkQuery);
-      
+
       if (result.rows.length === 0) {
         // Duration column doesn't exist, create it
         await pool.query(`
@@ -68,7 +68,7 @@ class TaskRequest extends BaseModel {
           AND column_name = 'duration'
         `;
         const typeResult = await pool.query(typeQuery);
-        
+
         if (typeResult.rows[0].data_type.toLowerCase() !== 'integer') {
           // Convert existing column to INTEGER
           await pool.query(`
@@ -113,9 +113,9 @@ class TaskRequest extends BaseModel {
         WHERE id = $2
         RETURNING *
       `;
-      
+
       const result = await client.query(updateQuery, [status, taskId]);
-      
+
       if (result.rows.length === 0) {
         throw new Error('Task request not found');
       }
@@ -155,4 +155,4 @@ class TaskRequest extends BaseModel {
   }
 }
 
-module.exports = new TaskRequest(); 
+module.exports = new TaskRequest();

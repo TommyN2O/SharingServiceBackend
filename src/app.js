@@ -1,8 +1,8 @@
 const express = require('express');
+const path = require('path');
 const cors = require('./config/corsConfig');
 const routes = require('./routes');
 const requestLogger = require('./middleware/requestLogger');
-const path = require('path');
 const Category = require('./models/Category');
 const TaskerProfile = require('./models/TaskerProfile');
 const pool = require('./config/database');
@@ -35,7 +35,7 @@ app.use('/images', express.static(path.join(__dirname, '../public/images')));
 // Add a route to check image paths
 app.get('/check-image-paths', (req, res) => {
   const paths = {
-    imagesDir: path.join(__dirname, '../public/images')
+    imagesDir: path.join(__dirname, '../public/images'),
   };
   res.json({ paths });
 });
@@ -202,14 +202,15 @@ app.get('/', (req, res) => {
       users: '/api/users',
       category: '/api/category',
       tasker: '/api/tasker',
-      tasks: '/api/tasks'
-    }
+      tasks: '/api/tasks',
+    },
   });
 });
 
 // Routes
 app.use('/api', routes);
 app.use('/api/cities', require('./routes/cityRoutes'));
+
 app.use('/api/auth', authRoutes);
 app.use('/api/tasker', taskerRoutes);
 app.use('/api/messages', messageRoutes);
@@ -256,8 +257,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({
     status: 'error',
     message: 'Something went wrong!',
-    details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    details: process.env.NODE_ENV === 'development' ? err.message : undefined,
   });
 });
 
-module.exports = app; 
+module.exports = app;

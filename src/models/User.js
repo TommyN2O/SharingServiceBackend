@@ -1,7 +1,7 @@
-const BaseModel = require('./BaseModel');
-const pool = require('../config/database');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const BaseModel = require('./BaseModel');
+const pool = require('../config/database');
 const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/jwt');
 require('dotenv').config();
 
@@ -44,10 +44,10 @@ class User extends BaseModel {
       const { password, ...rest } = userData;
       const salt = await bcrypt.genSalt(10);
       const password_hash = await bcrypt.hash(password, salt);
-      
+
       return this.create({
         ...rest,
-        password_hash
+        password_hash,
       });
     } catch (error) {
       console.error('Error in createUser:', error);
@@ -118,7 +118,7 @@ class User extends BaseModel {
         total_requests: 0,
         completed_tasks: 0,
         completed_tasker_tasks: 0,
-        average_rating: 0
+        average_rating: 0,
       };
     }
   }
@@ -252,7 +252,9 @@ class User extends BaseModel {
   }
 
   // Create new user
-  static async create({ name, surname, email, password, date_of_birth }) {
+  static async create({
+    name, surname, email, password, date_of_birth,
+  }) {
     try {
       // Hash password
       const salt = await bcrypt.genSalt(10);
@@ -283,7 +285,7 @@ class User extends BaseModel {
 
       const result = await pool.query(
         'INSERT INTO users (name, surname, email, password_hash, date_of_birth) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-        [name, surname, email, password_hash, formattedDate]
+        [name, surname, email, password_hash, formattedDate],
       );
 
       return result.rows[0];
@@ -296,7 +298,7 @@ class User extends BaseModel {
   // Update user
   async update(id, data) {
     const allowedFields = ['name', 'surname', 'email', 'date_of_birth', 'is_tasker', 'token_created_at', 'current_token', 'profile_photo'];
-    
+
     // Filter out undefined values and non-allowed fields
     const updateFields = Object.entries(data)
       .filter(([key, value]) => allowedFields.includes(key) && value !== undefined)
@@ -311,25 +313,25 @@ class User extends BaseModel {
       .map((field, index) => `${field} = $${index + 2}`)
       .join(', ');
 
-    const values = [id, ...updateFields.map(field => data[field])];
-    
+    const values = [id, ...updateFields.map((field) => data[field])];
+
     const query = `
       UPDATE users
       SET ${updates}
       WHERE id = $1
       RETURNING id, name, surname, email, date_of_birth, created_at, is_tasker, profile_photo
     `;
-    
+
     console.log('Update query:', query);
     console.log('Update values:', values);
-    
+
     const result = await pool.query(query, values);
     console.log('Update result:', result.rows[0]);
-    
+
     if (!result.rows[0]) {
       throw new Error('User not found');
     }
-    
+
     return result.rows[0];
   }
 
@@ -421,19 +423,19 @@ class User extends BaseModel {
 
       // Create new token with the fixed secret
       const token = jwt.sign(
-        { 
-          id: user.id, 
+        {
+          id: user.id,
           email: user.email,
-          isTasker: user.is_tasker || false
+          isTasker: user.is_tasker || false,
         },
         'sharing_service_secret_key_2024',
-        { expiresIn: '14d' }
+        { expiresIn: '14d' },
       );
 
       // Update the token_created_at field and store the new token
-      const updatedUser = await this.update(userId, { 
+      const updatedUser = await this.update(userId, {
         token_created_at: now.toISOString(),
-        current_token: token
+        current_token: token,
       });
 
       return token;
@@ -498,4 +500,4 @@ class User extends BaseModel {
   }
 }
 
-module.exports = new User(); 
+module.exports = new User();

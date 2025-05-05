@@ -7,7 +7,7 @@ const messageController = {
     try {
       const userId = req.user.id;
       console.log('Getting all chats for user:', userId);
-      
+
       const client = await pool.connect();
       try {
         const query = `
@@ -71,7 +71,7 @@ const messageController = {
 
         const result = await client.query(query, [userId]);
         console.log(`Found ${result.rows.length} chats`);
-        
+
         res.json(result.rows);
       } finally {
         client.release();
@@ -80,7 +80,7 @@ const messageController = {
       console.error('Error getting user chats:', error);
       res.status(500).json({
         error: 'Failed to get user chats',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -90,7 +90,7 @@ const messageController = {
     try {
       const userId = req.user.id;
       console.log('Getting conversations for user ID:', userId);
-      
+
       const client = await pool.connect();
       try {
         // Get all conversations with latest message and user details
@@ -128,9 +128,9 @@ const messageController = {
         `;
 
         const result = await client.query(query, [userId]);
-        
+
         // Format the response
-        const conversations = result.rows.map(row => ({
+        const conversations = result.rows.map((row) => ({
           id: row.id,
           senderId: row.sender_id,
           receiverId: row.receiver_id,
@@ -140,8 +140,8 @@ const messageController = {
             id: row.other_user_id,
             name: row.name,
             surname: row.surname,
-            profile_photo: row.profile_photo
-          }
+            profile_photo: row.profile_photo,
+          },
         }));
 
         console.log(`Found ${conversations.length} conversations`);
@@ -153,7 +153,7 @@ const messageController = {
       console.error('Error getting conversations:', error);
       res.status(500).json({
         error: 'Failed to get conversations',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -164,7 +164,7 @@ const messageController = {
       const userId = req.user.id;
       const otherUserId = req.params.userId;
       console.log('Getting chat details between users:', userId, 'and', otherUserId);
-      
+
       const client = await pool.connect();
       try {
         const query = `
@@ -190,23 +190,23 @@ const messageController = {
         `;
 
         const result = await client.query(query, [[userId, otherUserId]]);
-        
+
         if (result.rows.length < 2) {
           return res.status(404).json({
-            error: 'One or both users not found'
+            error: 'One or both users not found',
           });
         }
 
         // Format the response with isRequester field
         const response = {
           user1: {
-            ...result.rows.find(u => u.id === userId),
-            isRequester: true
+            ...result.rows.find((u) => u.id === userId),
+            isRequester: true,
           },
           user2: {
-            ...result.rows.find(u => u.id === otherUserId),
-            isRequester: false
-          }
+            ...result.rows.find((u) => u.id === otherUserId),
+            isRequester: false,
+          },
         };
 
         res.json(response);
@@ -217,7 +217,7 @@ const messageController = {
       console.error('Error getting chat details:', error);
       res.status(500).json({
         error: 'Failed to get chat details',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -228,7 +228,7 @@ const messageController = {
       const userId = req.user.id;
       const otherUserId = req.params.userId;
       console.log('Getting messages between users:', userId, 'and', otherUserId);
-      
+
       const client = await pool.connect();
       try {
         const query = `
@@ -246,7 +246,7 @@ const messageController = {
 
         const result = await client.query(query, [userId, otherUserId]);
         console.log(`Found ${result.rows.length} messages`);
-        
+
         res.json(result.rows);
       } finally {
         client.release();
@@ -255,7 +255,7 @@ const messageController = {
       console.error('Error getting messages:', error);
       res.status(500).json({
         error: 'Failed to get messages',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -265,21 +265,21 @@ const messageController = {
     try {
       const userId = req.user.id;
       const { receiverId } = req.body;
-      
+
       if (!receiverId) {
         return res.status(400).json({
-          error: 'receiverId is required'
+          error: 'receiverId is required',
         });
       }
 
       if (receiverId === userId) {
         return res.status(400).json({
-          error: 'Cannot create chat with yourself'
+          error: 'Cannot create chat with yourself',
         });
       }
 
       console.log('Creating/getting chat between users:', userId, 'and', receiverId);
-      
+
       const client = await pool.connect();
       try {
         // Check if chat exists
@@ -290,7 +290,7 @@ const messageController = {
         `;
         console.log('Finding chat with query:', chatCheckQuery);
         console.log('Query params:', [userId, receiverId]);
-        
+
         const existingChat = await client.query(chatCheckQuery, [userId, receiverId]);
         console.log('Existing chat result:', existingChat.rows);
 
@@ -333,24 +333,24 @@ const messageController = {
         `;
 
         const result = await client.query(usersQuery, [userId, receiverId]);
-        
+
         if (result.rows.length < 2) {
           return res.status(404).json({
-            error: 'One or both users not found'
+            error: 'One or both users not found',
           });
         }
 
         // Format the response with isRequester field and chatId
         const response = {
-          chatId: chatId,
+          chatId,
           user1: {
-            ...result.rows.find(u => u.id === userId),
-            isRequester: true
+            ...result.rows.find((u) => u.id === userId),
+            isRequester: true,
           },
           user2: {
-            ...result.rows.find(u => u.id === receiverId),
-            isRequester: false
-          }
+            ...result.rows.find((u) => u.id === receiverId),
+            isRequester: false,
+          },
         };
 
         res.status(201).json(response);
@@ -361,7 +361,7 @@ const messageController = {
       console.error('Error creating chat:', error);
       res.status(500).json({
         error: 'Failed to create chat',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -371,19 +371,19 @@ const messageController = {
     try {
       const senderId = req.user.id;
       const { receiverId, message, chatId } = req.body;
-      
+
       console.log('Request body:', req.body);
       console.log('Sender ID:', senderId);
-      
+
       if (!receiverId || !message || !chatId) {
         console.log('Missing fields:', { receiverId, message, chatId });
         return res.status(400).json({
-          error: 'receiverId, chatId and message are required'
+          error: 'receiverId, chatId and message are required',
         });
       }
 
       console.log('Sending message from', senderId, 'to', receiverId, 'in chat', chatId);
-      
+
       const client = await pool.connect();
       try {
         // Verify chat exists and users are part of it
@@ -398,13 +398,13 @@ const messageController = {
         `;
         console.log('Verifying chat with query:', chatVerifyQuery);
         console.log('Query params:', [chatId, senderId, receiverId]);
-        
+
         const chatVerify = await client.query(chatVerifyQuery, [chatId, senderId, receiverId]);
         console.log('Chat verify result:', chatVerify.rows);
-        
+
         if (chatVerify.rows.length === 0) {
           return res.status(404).json({
-            error: 'Chat not found or users are not part of this chat'
+            error: 'Chat not found or users are not part of this chat',
           });
         }
 
@@ -439,7 +439,7 @@ const messageController = {
       res.status(500).json({
         error: 'Failed to send message',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       });
     }
   },
@@ -459,7 +459,7 @@ const messageController = {
   async deleteMessage(req, res) {
     try {
       const message = await Message.findById(req.params.id);
-      
+
       if (!message) {
         return res.status(404).json({ error: 'Message not found' });
       }
@@ -480,10 +480,10 @@ const messageController = {
   async getChatMessages(req, res) {
     try {
       const userId = req.user.id;
-      const chatId = req.params.chatId;
-      
+      const { chatId } = req.params;
+
       console.log('Getting messages for chat:', chatId, 'requested by user:', userId);
-      
+
       const client = await pool.connect();
       try {
         // First verify user is part of this chat
@@ -492,12 +492,12 @@ const messageController = {
           WHERE id = $1 
           AND (user1_id = $2 OR user2_id = $2)
         `;
-        
+
         const chatVerify = await client.query(chatVerifyQuery, [chatId, userId]);
-        
+
         if (chatVerify.rows.length === 0) {
           return res.status(403).json({
-            error: 'You are not a participant in this chat'
+            error: 'You are not a participant in this chat',
           });
         }
 
@@ -547,7 +547,7 @@ const messageController = {
 
         const result = await client.query(query, [chatId]);
         console.log(`Found ${result.rows.length} messages`);
-        
+
         res.json(result.rows);
       } finally {
         client.release();
@@ -556,10 +556,10 @@ const messageController = {
       console.error('Error getting chat messages:', error);
       res.status(500).json({
         error: 'Failed to get chat messages',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
-  }
+  },
 };
 
-module.exports = messageController; 
+module.exports = messageController;

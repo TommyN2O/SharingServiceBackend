@@ -27,4 +27,4 @@ async function resetCategoriesTable() {
   }
 }
 
-resetCategoriesTable(); 
+resetCategoriesTable();

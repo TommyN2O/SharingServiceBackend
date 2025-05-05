@@ -1,4 +1,5 @@
 const express = require('express');
+
 const router = express.Router();
 const auth = require('../middleware/auth');
 const {
@@ -26,7 +27,7 @@ const {
   getPaidTasksReceived,
   getSentCompletedTasks,
   getReceivedCompletedTasks,
-  getWalletPayments
+  getWalletPayments,
 } = require('../controllers/taskerController');
 
 // Apply authentication middleware to all routes
@@ -74,4 +75,4 @@ router.put('/availability', updateAvailability);
 // Test endpoints
 router.post('/test/data', insertTestData);
 
-module.exports = router; 
+module.exports = router;

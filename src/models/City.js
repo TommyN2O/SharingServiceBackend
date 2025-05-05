@@ -26,7 +26,7 @@ class City {
     try {
       // Drop existing table
       await pool.query('DROP TABLE IF EXISTS cities CASCADE');
-      
+
       // Create new table
       await pool.query(`
         CREATE TABLE cities (
@@ -80,7 +80,7 @@ class City {
       'Sintautai', 'Pilviškiai', 'Virbalis', 'Kybartai', 'Viešvilė', 'Smalininkai',
       'Eržvilkas', 'Laukuva', 'Žemaičių Kalvarija', 'Tverai', 'Varniai', 'Tryškiai',
       'Luokė', 'Neringa', 'Rusnė', 'Švėkšna', 'Priekulė', 'Salantai', 'Mosėdis',
-      'Ylakiai', 'Barstyčiai', 'Alsėdžiai', 'Kuliai', 'Panemunė'
+      'Ylakiai', 'Barstyčiai', 'Alsėdžiai', 'Kuliai', 'Panemunė',
     ];
 
     for (const city of cities) {
@@ -89,4 +89,4 @@ class City {
   }
 }
 
-module.exports = new City(); 
+module.exports = new City();

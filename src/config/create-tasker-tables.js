@@ -67,7 +67,6 @@ async function createTaskerTables() {
       );
     `);
     console.log('Tasker gallery table created successfully');
-
   } catch (error) {
     console.error('Error creating tasker tables:', error);
   } finally {
@@ -75,4 +74,4 @@ async function createTaskerTables() {
   }
 }
 
-createTaskerTables(); 
+createTaskerTables();

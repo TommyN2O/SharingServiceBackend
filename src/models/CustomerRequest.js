@@ -67,4 +67,4 @@ class CustomerRequest extends BaseModel {
   }
 }
 
-module.exports = new CustomerRequest(); 
+module.exports = new CustomerRequest();

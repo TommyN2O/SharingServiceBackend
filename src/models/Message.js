@@ -42,7 +42,7 @@ class Message extends BaseModel {
           FROM information_schema.columns 
           WHERE table_name = 'messages' AND column_name = 'message'
         `);
-        
+
         if (columnCheck.rows.length > 0) {
           // Need to rename column from message to content
           await pool.query('ALTER TABLE messages RENAME COLUMN message TO content');
@@ -66,10 +66,10 @@ class Message extends BaseModel {
         WHERE table_name = 'messages'
       ) as messages_exist
     `;
-    
+
     const result = await pool.query(query);
     const { chats_exist, messages_exist } = result.rows[0];
-    
+
     console.log('Tables exist check:', { chats_exist, messages_exist });
     return chats_exist && messages_exist;
   }
@@ -88,7 +88,7 @@ class Message extends BaseModel {
       `;
       console.log('Finding chat with query:', findQuery);
       console.log('Query params:', [user1Id, user2Id]);
-      
+
       const existingChat = await client.query(findQuery, [user1Id, user2Id]);
       console.log('Existing chat result:', existingChat.rows);
 
@@ -105,10 +105,10 @@ class Message extends BaseModel {
       `;
       console.log('Creating new chat with query:', insertQuery);
       console.log('Insert params:', [user1Id, user2Id]);
-      
+
       const newChat = await client.query(insertQuery, [user1Id, user2Id]);
       console.log('New chat created:', newChat.rows[0]);
-      
+
       await client.query('COMMIT');
       return newChat.rows[0].id;
     } catch (error) {
@@ -196,4 +196,4 @@ class Message extends BaseModel {
   }
 }
 
-module.exports = new Message(); 
+module.exports = new Message();

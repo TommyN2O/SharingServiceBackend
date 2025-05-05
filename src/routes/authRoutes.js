@@ -1,4 +1,5 @@
 const express = require('express');
+
 const router = express.Router();
 const userController = require('../controllers/userController');
 
@@ -12,8 +13,8 @@ router.post('/login', userController.login);
 router.get('/test', (req, res) => {
   res.status(200).json({
     status: 'success',
-    message: 'Auth routes are working!'
+    message: 'Auth routes are working!',
   });
 });
 
-module.exports = router; 
+module.exports = router;

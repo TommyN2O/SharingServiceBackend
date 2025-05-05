@@ -36,18 +36,18 @@ class SupportTicket extends BaseModel {
       {
         name: 'sender_name',
         type: 'VARCHAR(100)',
-        default: null
+        default: null,
       },
       {
         name: 'sender_surname',
         type: 'VARCHAR(100)',
-        default: null
+        default: null,
       },
       {
         name: 'sender_email',
         type: 'VARCHAR(255)',
-        default: null
-      }
+        default: null,
+      },
     ];
 
     for (const column of columnsToAdd) {
@@ -71,7 +71,9 @@ class SupportTicket extends BaseModel {
   }
 
   async createTicket(ticketData) {
-    const { sender_id, sender_name, sender_surname, sender_email, type, content } = ticketData;
+    const {
+      sender_id, sender_name, sender_surname, sender_email, type, content,
+    } = ticketData;
     const query = `
       INSERT INTO support_tickets (
         sender_id, 
@@ -90,7 +92,7 @@ class SupportTicket extends BaseModel {
       sender_surname,
       sender_email,
       type,
-      content
+      content,
     ]);
     return result.rows[0];
   }
@@ -117,4 +119,4 @@ class SupportTicket extends BaseModel {
   }
 }
 
-module.exports = new SupportTicket(); 
+module.exports = new SupportTicket();

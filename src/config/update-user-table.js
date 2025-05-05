@@ -24,4 +24,4 @@ async function updateUserTable() {
   }
 }
 
-updateUserTable(); 
+updateUserTable();

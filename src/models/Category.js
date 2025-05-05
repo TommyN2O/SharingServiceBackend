@@ -1,6 +1,6 @@
+const path = require('path');
 const BaseModel = require('./BaseModel');
 const pool = require('../config/database');
-const path = require('path');
 
 class Category extends BaseModel {
   constructor() {
@@ -25,7 +25,7 @@ class Category extends BaseModel {
   async create({ name, image_url, description }) {
     // Convert local file path to URL path
     const imageUrl = this.convertToImageUrl(image_url);
-    
+
     const query = `
       INSERT INTO categories (name, image_url, description)
       VALUES ($1, $2, $3)
@@ -61,7 +61,7 @@ class Category extends BaseModel {
   async update(id, { name, image_url, description }) {
     // Convert local file path to URL path if image_url is provided
     const imageUrl = image_url ? this.convertToImageUrl(image_url) : undefined;
-    
+
     const query = `
       UPDATE categories
       SET name = $1, 
@@ -94,4 +94,4 @@ class Category extends BaseModel {
   }
 }
 
-module.exports = new Category(); 
+module.exports = new Category();

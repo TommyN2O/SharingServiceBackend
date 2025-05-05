@@ -1,6 +1,6 @@
-const stripe = require('../config/stripe');
 const path = require('path');
 const fs = require('fs');
+const stripe = require('../config/stripe');
 const pool = require('../config/database');
 const Payment = require('../models/Payment');
 const TaskRequest = require('../models/TaskRequest');
@@ -14,13 +14,13 @@ const paymentController = {
 
       if (!amount || !task_id || !type) {
         return res.status(400).json({
-          error: 'Missing required parameters: amount, task_id, and type are required'
+          error: 'Missing required parameters: amount, task_id, and type are required',
         });
       }
 
       if (!['Card', 'Wallet'].includes(type)) {
         return res.status(400).json({
-          error: 'Invalid payment type. Must be either "Card" or "Wallet"'
+          error: 'Invalid payment type. Must be either "Card" or "Wallet"',
         });
       }
 
@@ -39,7 +39,7 @@ const paymentController = {
           // Get user's wallet amount
           const userQuery = 'SELECT wallet_amount FROM users WHERE id = $1';
           const userResult = await client.query(userQuery, [req.user.id]);
-          
+
           if (userResult.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
           }
@@ -52,7 +52,7 @@ const paymentController = {
             return res.status(400).json({
               error: 'Insufficient funds in wallet',
               required: amountInCents / 100,
-              available: walletAmount / 100
+              available: walletAmount / 100,
             });
           }
 
@@ -60,7 +60,7 @@ const paymentController = {
           const newWalletAmount = walletAmount - amountInCents;
           await client.query(
             'UPDATE users SET wallet_amount = $1 WHERE id = $2',
-            [newWalletAmount, req.user.id]
+            [newWalletAmount, req.user.id],
           );
 
           // Add amount to tasker's wallet
@@ -70,7 +70,7 @@ const paymentController = {
           const newTaskerWalletAmount = taskerWalletAmount + amountInCents;
           await client.query(
             'UPDATE users SET wallet_amount = $1 WHERE id = $2',
-            [newTaskerWalletAmount, taskRequest.tasker_id]
+            [newTaskerWalletAmount, taskRequest.tasker_id],
           );
 
           // Create a unique session ID for wallet payment
@@ -86,19 +86,19 @@ const paymentController = {
             stripe_payment_intent_id: null,
             status: 'completed',
             user_id: req.user.id,
-            is_payment: true
+            is_payment: true,
           });
 
           // Create payment record for tasker (earning)
           await Payment.createPayment({
             task_request_id: task_id,
-            amount: amount,
+            amount,
             currency: 'EUR',
             stripe_session_id: sessionIdTasker,
             stripe_payment_intent_id: null,
             status: 'completed',
             user_id: taskRequest.tasker_id,
-            is_payment: false
+            is_payment: false,
           });
 
           // Update task status to paid
@@ -109,7 +109,7 @@ const paymentController = {
           return res.json({
             success: true,
             message: 'Payment completed successfully using wallet',
-            remaining_balance: newWalletAmount / 100
+            remaining_balance: newWalletAmount / 100,
           });
         } catch (error) {
           await client.query('ROLLBACK');
@@ -141,7 +141,7 @@ const paymentController = {
           amount: amount.toString(),
           sender_id: req.user.id.toString(),
           tasker_id: taskRequest.tasker_id.toString(),
-          session_prefix: `payer_${req.user.id}_${task_id}`
+          session_prefix: `payer_${req.user.id}_${task_id}`,
         },
         mode: 'payment',
         success_url: `${baseUrl}/api/payment/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -153,7 +153,7 @@ const paymentController = {
       console.error('Error creating checkout session:', error);
       res.status(500).json({
         error: 'Failed to create checkout session',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -164,13 +164,13 @@ const paymentController = {
     try {
       // Verify the session and get task_id from metadata
       const session = await stripe.checkout.sessions.retrieve(session_id);
-      const task_id = session.metadata.task_id;
-      
+      const { task_id } = session.metadata;
+
       console.log('Success redirect for session:', session_id, 'task_id:', task_id);
 
       // Read and modify the success HTML template
       let htmlContent = fs.readFileSync(path.join(__dirname, '../views/payment-success.html'), 'utf8');
-      
+
       // Replace the placeholder with actual task_id
       htmlContent = htmlContent.replace('TASK_ID_PLACEHOLDER', task_id);
 
@@ -195,7 +195,7 @@ const paymentController = {
 
     // Read the cancel HTML template
     let htmlContent = fs.readFileSync(path.join(__dirname, '../views/payment-cancel.html'), 'utf8');
-    
+
     // Replace the placeholder with actual task_id
     htmlContent = htmlContent.replace('TASK_ID_PLACEHOLDER', task_id);
 
@@ -213,7 +213,7 @@ const paymentController = {
       event = stripe.webhooks.constructEvent(
         req.body,
         sig,
-        process.env.STRIPE_WEBHOOK_SECRET
+        process.env.STRIPE_WEBHOOK_SECRET,
       );
     } catch (err) {
       console.error('Webhook signature verification failed:', err.message);
@@ -244,7 +244,7 @@ const paymentController = {
           const newTaskerWalletAmount = taskerWalletAmount + amountInCents;
           await pool.query(
             'UPDATE users SET wallet_amount = $1 WHERE id = $2',
-            [newTaskerWalletAmount, taskerId]
+            [newTaskerWalletAmount, taskerId],
           );
 
           // Create payment record for sender (payment)
@@ -256,19 +256,19 @@ const paymentController = {
             stripe_payment_intent_id: session.payment_intent,
             status: 'completed',
             user_id: senderId,
-            is_payment: true
+            is_payment: true,
           });
 
           // Create payment record for tasker (earning)
           await Payment.createPayment({
             task_request_id: taskId,
-            amount: amount, // Positive amount for tasker
+            amount, // Positive amount for tasker
             currency: 'EUR',
             stripe_session_id: `${sessionPrefix}_tasker_${session.id}`,
             stripe_payment_intent_id: session.payment_intent,
             status: 'completed',
             user_id: taskerId,
-            is_payment: false
+            is_payment: false,
           });
 
           // Update task status to paid
@@ -284,10 +284,10 @@ const paymentController = {
       console.error('Error processing webhook:', error);
       res.status(500).json({
         error: 'Failed to process webhook',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
-  }
+  },
 };
 
-module.exports = paymentController; 
+module.exports = paymentController;

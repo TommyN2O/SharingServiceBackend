@@ -48,4 +48,4 @@ async function initializeDatabase() {
 }
 
 // Run the initialization
-initializeDatabase(); 
+initializeDatabase();

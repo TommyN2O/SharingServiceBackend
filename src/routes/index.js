@@ -1,4 +1,5 @@
 const express = require('express');
+
 const router = express.Router();
 const authRoutes = require('./authRoutes');
 const userRoutes = require('./userRoutes');
@@ -17,8 +18,8 @@ router.get('/', (req, res) => {
       users: '/api/users',
       category: '/api/category',
       tasker: '/api/tasker',
-      tasks: '/api/tasks'
-    }
+      tasks: '/api/tasks',
+    },
   });
 });
 
@@ -33,8 +34,8 @@ router.get('/test', (req, res) => {
       connected: true,
       host: process.env.DB_HOST,
       port: process.env.DB_PORT,
-      database: process.env.DB_NAME
-    }
+      database: process.env.DB_NAME,
+    },
   });
 });
 
@@ -53,8 +54,8 @@ router.use('/tasker', taskerRoutes);
 // Server date route
 router.get('/serverdate', (req, res) => {
   res.status(200).json({
-    date: new Date().toISOString()
+    date: new Date().toISOString(),
   });
 });
 
-module.exports = router; 
+module.exports = router;

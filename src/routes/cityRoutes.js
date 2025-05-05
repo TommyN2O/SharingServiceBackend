@@ -1,4 +1,5 @@
 const express = require('express');
+
 const router = express.Router();
 const City = require('../models/City');
 
@@ -24,4 +25,4 @@ router.post('/reset', async (req, res) => {
   }
 });
 
-module.exports = router; 
+module.exports = router;

@@ -31,7 +31,7 @@ const reviewController = {
   async createReview(req, res) {
     try {
       const { taskId, rating, comment } = req.body;
-      
+
       // Check if task exists and is completed
       const task = await PlannedTask.findById(taskId);
       if (!task) {
@@ -52,7 +52,7 @@ const reviewController = {
         customer_id: req.user.id,
         tasker_id: task.tasker_id,
         rating,
-        comment
+        comment,
       });
 
       // Update tasker's average rating
@@ -82,7 +82,7 @@ const reviewController = {
       }
 
       const updatedReview = await Review.update(req.params.id, { rating, comment });
-      
+
       // Update tasker's average rating
       const taskerReviews = await Review.findByTaskerId(review.tasker_id);
       const avgRating = taskerReviews.reduce((acc, rev) => acc + rev.rating, 0) / taskerReviews.length;
@@ -98,7 +98,7 @@ const reviewController = {
   async deleteReview(req, res) {
     try {
       const review = await Review.findById(req.params.id);
-      
+
       if (!review) {
         return res.status(404).json({ error: 'Review not found' });
       }
@@ -112,7 +112,7 @@ const reviewController = {
 
       // Update tasker's average rating
       const taskerReviews = await Review.findByTaskerId(review.tasker_id);
-      const avgRating = taskerReviews.length > 0 
+      const avgRating = taskerReviews.length > 0
         ? taskerReviews.reduce((acc, rev) => acc + rev.rating, 0) / taskerReviews.length
         : 0;
       await TaskerProfile.update(review.tasker_id, { rating: avgRating });
@@ -121,7 +121,7 @@ const reviewController = {
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
-  }
+  },
 };
 
-module.exports = reviewController; 
+module.exports = reviewController;

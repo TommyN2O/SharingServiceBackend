@@ -1,4 +1,5 @@
 const express = require('express');
+
 const router = express.Router();
 const auth = require('../middleware/auth');
 const categoryController = require('../controllers/categoryController');
@@ -13,4 +14,4 @@ router.use(auth);
 router.put('/:id', categoryController.updateCategory);
 router.delete('/:id', categoryController.deleteCategory);
 
-module.exports = router; 
+module.exports = router;

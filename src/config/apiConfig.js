@@ -5,7 +5,7 @@ const config = {
   // Authentication endpoints
   auth: {
     register: '/auth/register',
-    login: '/auth/login'
+    login: '/auth/login',
   },
 
   // User endpoints
@@ -14,7 +14,7 @@ const config = {
     dashboard: '/user/dashboard',
     customerRequests: '/user/customer-requests',
     savedTaskers: '/user/saved-taskers',
-    messages: '/user/messages'
+    messages: '/user/messages',
   },
 
   // Tasker endpoints
@@ -22,7 +22,7 @@ const config = {
     profile: '/tasker/profile',
     availableTasks: '/tasker/available-tasks',
     offers: '/tasker/offers',
-    tasks: '/tasker/tasks'
+    tasks: '/tasker/tasks',
   },
 
   // Task endpoints
@@ -30,27 +30,27 @@ const config = {
     requests: '/tasks/requests',
     offers: '/tasks/offers',
     plannedTasks: '/tasks/planned-tasks',
-    reviews: '/tasks/reviews'
+    reviews: '/tasks/reviews',
   },
 
   // Category endpoints
   category: {
     all: '/categories',
-    byId: (id) => `/categories/${id}`
+    byId: (id) => `/categories/${id}`,
   },
 
   // Review endpoints
   review: {
     taskerReviews: (taskerId) => `/reviews/tasker/${taskerId}`,
-    byId: (id) => `/reviews/${id}`
+    byId: (id) => `/reviews/${id}`,
   },
 
   // Message endpoints
   message: {
     conversations: '/messages/conversations',
     conversation: (userId) => `/messages/conversation/${userId}`,
-    markAsRead: (senderId) => `/messages/read/${senderId}`
-  }
+    markAsRead: (senderId) => `/messages/read/${senderId}`,
+  },
 };
 
-module.exports = config; 
+module.exports = config;

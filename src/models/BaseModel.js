@@ -21,7 +21,7 @@ class BaseModel {
     const columns = Object.keys(data).join(', ');
     const values = Object.values(data);
     const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
-    
+
     const query = `INSERT INTO ${this.tableName} (${columns}) VALUES (${placeholders}) RETURNING *`;
     const result = await pool.query(query, values);
     return result.rows[0];
@@ -31,10 +31,10 @@ class BaseModel {
     const setClause = Object.keys(data)
       .map((key, index) => `${key} = $${index + 2}`)
       .join(', ');
-    
+
     const values = [id, ...Object.values(data)];
     const query = `UPDATE ${this.tableName} SET ${setClause} WHERE id = $1 RETURNING *`;
-    
+
     const result = await pool.query(query, values);
     return result.rows[0];
   }
@@ -58,4 +58,4 @@ class BaseModel {
   }
 }
 
-module.exports = BaseModel; 
+module.exports = BaseModel;

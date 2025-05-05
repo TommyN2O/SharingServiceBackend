@@ -32,7 +32,9 @@ class Review extends BaseModel {
   }
 
   async createReview(data) {
-    const { planned_task_id, reviewer_id, reviewee_id, rating, review } = data;
+    const {
+      planned_task_id, reviewer_id, reviewee_id, rating, review,
+    } = data;
     const query = `
       INSERT INTO reviews (planned_task_id, reviewer_id, reviewee_id, rating, review)
       VALUES ($1, $2, $3, $4, $5)
@@ -43,7 +45,7 @@ class Review extends BaseModel {
       reviewer_id,
       reviewee_id,
       rating,
-      review
+      review,
     ]);
     return rows[0];
   }
@@ -59,4 +61,4 @@ class Review extends BaseModel {
   }
 }
 
-module.exports = new Review(); 
+module.exports = new Review();

@@ -113,7 +113,9 @@ class TaskerProfile extends BaseModel {
 
   // Create tasker profile
   async create(data) {
-    const { user_id, profile_photo, description, hourly_rate } = data;
+    const {
+      user_id, profile_photo, description, hourly_rate,
+    } = data;
     const query = `
       INSERT INTO tasker_profiles (user_id, profile_photo, description, hourly_rate)
       VALUES ($1, $2, $3, $4)
@@ -127,7 +129,7 @@ class TaskerProfile extends BaseModel {
   async addCategory(tasker_id, category) {
     // Handle both object format {id, name} and direct ID
     const categoryId = typeof category === 'object' ? category.id : category;
-    
+
     const query = `
       INSERT INTO tasker_categories (tasker_id, category_id)
       VALUES ($1, $2)
@@ -141,7 +143,7 @@ class TaskerProfile extends BaseModel {
     try {
       // Get the city ID from the object
       const cityId = typeof city === 'object' ? city.id : city;
-      
+
       // Link the tasker to the city
       const query = `
         INSERT INTO tasker_cities (tasker_id, city_id)
@@ -189,7 +191,7 @@ class TaskerProfile extends BaseModel {
         ON CONFLICT (tasker_id, date, time_slot) DO NOTHING
         RETURNING *
       `;
-      
+
       const result = await pool.query(query, [tasker_id, formattedDate, time]);
       return result.rows[0];
     } catch (error) {
@@ -268,7 +270,7 @@ class TaskerProfile extends BaseModel {
     `;
 
     const result = await pool.query(query, [userId]);
-    
+
     if (result.rows.length === 0) {
       return null;
     }
@@ -289,7 +291,7 @@ class TaskerProfile extends BaseModel {
       categories: Array.isArray(profile.categories) ? profile.categories : [],
       cities: Array.isArray(profile.cities) ? profile.cities : [],
       availability: Array.isArray(profile.availability) ? profile.availability : [],
-      gallery: Array.isArray(profile.gallery) ? profile.gallery : []
+      gallery: Array.isArray(profile.gallery) ? profile.gallery : [],
     };
   }
 
@@ -308,12 +310,11 @@ class TaskerProfile extends BaseModel {
 
     if (existingProfile) {
       return this.update(existingProfile.id, profileData);
-    } else {
-      return this.create({
-        user_id,
-        ...profileData
-      });
     }
+    return this.create({
+      user_id,
+      ...profileData,
+    });
   }
 
   async getTopTaskers(limit = 10) {
@@ -402,10 +403,10 @@ class TaskerProfile extends BaseModel {
       await client.query('DELETE FROM tasker_availability WHERE tasker_id IN (SELECT id FROM tasker_profiles WHERE user_id = $1)', [user_id]);
       await client.query('DELETE FROM tasker_cities WHERE tasker_id IN (SELECT id FROM tasker_profiles WHERE user_id = $1)', [user_id]);
       await client.query('DELETE FROM tasker_categories WHERE tasker_id IN (SELECT id FROM tasker_profiles WHERE user_id = $1)', [user_id]);
-      
+
       // Delete the tasker profile
       const result = await client.query('DELETE FROM tasker_profiles WHERE user_id = $1 RETURNING *', [user_id]);
-      
+
       await client.query('COMMIT');
       return result.rows[0];
     } catch (error) {
@@ -420,7 +421,7 @@ class TaskerProfile extends BaseModel {
   async addGalleryPhoto(tasker_id, image_url) {
     // Remove any 'images/' prefix if it exists and get just the relative path
     const relativePath = image_url.replace(/^images\//, '');
-    
+
     const query = `
       INSERT INTO tasker_gallery (tasker_id, image_url)
       VALUES ($1, $2)
@@ -472,8 +473,10 @@ class TaskerProfile extends BaseModel {
       console.log('Update data received:', data);
 
       // 1. Update main profile data
-      const { profile_photo, description, hourly_rate, categories, cities, availability } = data;
-      
+      const {
+        profile_photo, description, hourly_rate, categories, cities, availability,
+      } = data;
+
       console.log('Extracted availability:', availability);
 
       const updateQuery = `
@@ -486,12 +489,12 @@ class TaskerProfile extends BaseModel {
         WHERE user_id = $4
         RETURNING *
       `;
-      
+
       const result = await client.query(updateQuery, [
         profile_photo,
         description,
         hourly_rate,
-        user_id
+        user_id,
       ]);
 
       const taskerProfile = result.rows[0];
@@ -503,13 +506,13 @@ class TaskerProfile extends BaseModel {
       if (Array.isArray(categories)) {
         // Delete existing categories
         await client.query('DELETE FROM tasker_categories WHERE tasker_id = $1', [taskerProfile.id]);
-        
+
         // Add new categories
         for (const category of categories) {
           const categoryId = typeof category === 'object' ? category.id : category;
           await client.query(
             'INSERT INTO tasker_categories (tasker_id, category_id) VALUES ($1, $2)',
-            [taskerProfile.id, categoryId]
+            [taskerProfile.id, categoryId],
           );
         }
       }
@@ -518,13 +521,13 @@ class TaskerProfile extends BaseModel {
       if (Array.isArray(cities)) {
         // Delete existing cities
         await client.query('DELETE FROM tasker_cities WHERE tasker_id = $1', [taskerProfile.id]);
-        
+
         // Add new cities
         for (const city of cities) {
           const cityId = typeof city === 'object' ? city.id : city;
           await client.query(
             'INSERT INTO tasker_cities (tasker_id, city_id) VALUES ($1, $2)',
-            [taskerProfile.id, cityId]
+            [taskerProfile.id, cityId],
           );
         }
       }
@@ -532,20 +535,21 @@ class TaskerProfile extends BaseModel {
       // 4. Update availability if provided and not empty
       if (Array.isArray(availability) && availability.length > 0) {
         console.log('Raw availability data:', JSON.stringify(availability, null, 2));
-        
+
         // Delete existing availability
         const deleteResult = await client.query('DELETE FROM tasker_availability WHERE tasker_id = $1', [taskerProfile.id]);
         console.log('Deleted existing availability:', {
           tasker_id: taskerProfile.id,
-          rowsDeleted: deleteResult.rowCount
+          rowsDeleted: deleteResult.rowCount,
         });
-        
+
         // Add new availability
         const insertionErrors = [];
         for (const slot of availability) {
           try {
-            let dateStr, timeStr;
-            
+            let dateStr; let
+              timeStr;
+
             if (typeof slot === 'string') {
               // Handle string format "YYYY-MM-DD HH:mm:ss"
               [dateStr, timeStr] = slot.split(' ');
@@ -573,7 +577,7 @@ class TaskerProfile extends BaseModel {
               continue;
             }
             const formattedDate = dateObj.toISOString().split('T')[0];
-            
+
             // Handle time format
             let formattedTime;
             if (timeStr.includes(':')) {
@@ -593,12 +597,12 @@ class TaskerProfile extends BaseModel {
 
             await client.query(
               'INSERT INTO tasker_availability (tasker_id, date, time_slot) VALUES ($1, $2, $3::time)',
-              [taskerProfile.id, formattedDate, formattedTime]
+              [taskerProfile.id, formattedDate, formattedTime],
             );
           } catch (error) {
             console.error('Error inserting availability:', {
               slot,
-              error: error.message
+              error: error.message,
             });
             insertionErrors.push({ slot, error: error.message });
           }
@@ -616,7 +620,7 @@ class TaskerProfile extends BaseModel {
 
       // Get the updated profile with all related data
       const updatedProfile = await this.getCompleteProfile(user_id);
-      
+
       await client.query('COMMIT');
       return updatedProfile;
     } catch (error) {
@@ -635,7 +639,7 @@ class TaskerProfile extends BaseModel {
       rating: filters.rating ? parseFloat(filters.rating) : undefined,
       category: filters.category ? parseInt(filters.category) : undefined,
       minPrice: filters.minPrice !== null ? parseFloat(filters.minPrice) : undefined,
-      maxPrice: filters.maxPrice !== null ? parseFloat(filters.maxPrice) : undefined
+      maxPrice: filters.maxPrice !== null ? parseFloat(filters.maxPrice) : undefined,
     };
 
     console.log('Original filters:', filters);
@@ -721,7 +725,7 @@ class TaskerProfile extends BaseModel {
 
     // Add city filter if provided
     if (normalizedFilters.city) {
-      const cityIds = normalizedFilters.city.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      const cityIds = normalizedFilters.city.split(',').map((id) => parseInt(id.trim())).filter((id) => !isNaN(id));
       if (cityIds.length > 0) {
         queryParams.push(cityIds);
         query += `
@@ -750,7 +754,7 @@ class TaskerProfile extends BaseModel {
 
       // Add time range filter if both timeFrom and timeTo are provided
       if (normalizedFilters.timeFrom && normalizedFilters.timeTo) {
-        queryParams.push(normalizedFilters.timeFrom + ':00', normalizedFilters.timeTo + ':00');
+        queryParams.push(`${normalizedFilters.timeFrom}:00`, `${normalizedFilters.timeTo}:00`);
         conditions.push(`ta.time_slot BETWEEN $${queryParams.length - 1}::time AND $${queryParams.length}::time`);
       }
     }
@@ -783,17 +787,17 @@ class TaskerProfile extends BaseModel {
 
     console.log('Final query:', query);
     console.log('Final parameters:', queryParams);
-    
+
     const result = await pool.query(query, queryParams);
-    
-    return result.rows.map(profile => ({
+
+    return result.rows.map((profile) => ({
       ...profile,
       hourly_rate: profile.hourly_rate ? profile.hourly_rate.toString() : '0.00',
       description: profile.description || '',
       categories: Array.isArray(profile.categories) ? profile.categories : [],
       cities: Array.isArray(profile.cities) ? profile.cities : [],
       availability: Array.isArray(profile.availability) ? profile.availability : [],
-      gallery: Array.isArray(profile.gallery) ? profile.gallery : []
+      gallery: Array.isArray(profile.gallery) ? profile.gallery : [],
     }));
   }
 
@@ -865,15 +869,15 @@ class TaskerProfile extends BaseModel {
       WHERE tp.id = $1
       GROUP BY tp.id, u.id, u.name, u.surname, u.email
     `;
-    
+
     const result = await pool.query(query, [profileId]);
-    
+
     if (result.rows.length === 0) {
       return null;
     }
 
     const profile = result.rows[0];
-    
+
     return {
       ...profile,
       hourly_rate: profile.hourly_rate ? profile.hourly_rate.toString() : '0.00',
@@ -881,9 +885,9 @@ class TaskerProfile extends BaseModel {
       categories: Array.isArray(profile.categories) ? profile.categories : [],
       cities: Array.isArray(profile.cities) ? profile.cities : [],
       availability: Array.isArray(profile.availability) ? profile.availability : [],
-      gallery: Array.isArray(profile.gallery) ? profile.gallery : []
+      gallery: Array.isArray(profile.gallery) ? profile.gallery : [],
     };
   }
 }
 
-module.exports = new TaskerProfile(); 
+module.exports = new TaskerProfile();

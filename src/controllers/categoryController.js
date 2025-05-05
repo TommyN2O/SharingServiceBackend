@@ -13,7 +13,7 @@ const categoryController = {
       res.status(500).json({
         status: 'error',
         message: 'Internal server error',
-        details: error.message
+        details: error.message,
       });
     }
   },
@@ -23,12 +23,12 @@ const categoryController = {
     try {
       console.log('Fetching category with ID:', req.params.id);
       const category = await Category.getById(req.params.id);
-      
+
       if (!category) {
         console.log('Category not found:', req.params.id);
         return res.status(404).json({
           status: 'error',
-          message: 'Category not found'
+          message: 'Category not found',
         });
       }
 
@@ -36,15 +36,15 @@ const categoryController = {
       res.status(200).json({
         status: 'success',
         data: {
-          category
-        }
+          category,
+        },
       });
     } catch (error) {
       console.error('Error getting category:', error);
       res.status(500).json({
         status: 'error',
         message: 'Internal server error',
-        details: error.message
+        details: error.message,
       });
     }
   },
@@ -60,29 +60,29 @@ const categoryController = {
         console.log('Missing required fields:', { name, image_url });
         return res.status(400).json({
           status: 'error',
-          message: 'Name and image URL are required'
+          message: 'Name and image URL are required',
         });
       }
 
       const category = await Category.create({
         name,
         image_url,
-        description
+        description,
       });
 
       console.log('Category created successfully:', category);
       res.status(201).json({
         status: 'success',
         data: {
-          category
-        }
+          category,
+        },
       });
     } catch (error) {
       console.error('Error creating category:', error);
       res.status(500).json({
         status: 'error',
         message: 'Internal server error',
-        details: error.message
+        details: error.message,
       });
     }
   },
@@ -97,14 +97,14 @@ const categoryController = {
       const category = await Category.update(categoryId, {
         name,
         image_url,
-        description
+        description,
       });
 
       if (!category) {
         console.log('Category not found for update:', categoryId);
         return res.status(404).json({
           status: 'error',
-          message: 'Category not found'
+          message: 'Category not found',
         });
       }
 
@@ -112,15 +112,15 @@ const categoryController = {
       res.status(200).json({
         status: 'success',
         data: {
-          category
-        }
+          category,
+        },
       });
     } catch (error) {
       console.error('Error updating category:', error);
       res.status(500).json({
         status: 'error',
         message: 'Internal server error',
-        details: error.message
+        details: error.message,
       });
     }
   },
@@ -135,24 +135,24 @@ const categoryController = {
         console.log('Category not found for deletion:', req.params.id);
         return res.status(404).json({
           status: 'error',
-          message: 'Category not found'
+          message: 'Category not found',
         });
       }
 
       console.log('Category deleted successfully:', category);
       res.status(200).json({
         status: 'success',
-        message: 'Category deleted successfully'
+        message: 'Category deleted successfully',
       });
     } catch (error) {
       console.error('Error deleting category:', error);
       res.status(500).json({
         status: 'error',
         message: 'Internal server error',
-        details: error.message
+        details: error.message,
       });
     }
-  }
+  },
 };
 
-module.exports = categoryController; 
+module.exports = categoryController;
