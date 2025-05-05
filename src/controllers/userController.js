@@ -472,6 +472,53 @@ const userController = {
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
+  },
+
+  // Change user password
+  async changePassword(req, res) {
+    try {
+      const userId = req.user.id; // From auth middleware
+      const { currentPassword, newPassword } = req.body;
+
+      // Validate input
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({
+          error: 'Current password and new password are required'
+        });
+      }
+
+      // Validate new password
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          error: 'New password must be at least 6 characters long'
+        });
+      }
+
+      // Update password using the User model instance
+      await User.updatePassword(userId, currentPassword, newPassword);
+
+      res.status(200).json({
+        message: 'Password updated successfully'
+      });
+    } catch (error) {
+      console.error('Error changing password:', error);
+      
+      if (error.message === 'Current password is incorrect') {
+        return res.status(401).json({
+          error: 'Current password is incorrect'
+        });
+      }
+
+      if (error.message === 'User not found') {
+        return res.status(404).json({
+          error: 'User not found'
+        });
+      }
+
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
   }
 };
 

@@ -34,4 +34,6 @@ router.get('/complete/:id', userController.getUserCompleteData);
 // Get user by ID (must be last to avoid conflicts)
 router.get('/:id', userController.getUserById);
 
+router.post('/change-password', userController.changePassword);
+
 module.exports = router; 

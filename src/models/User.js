@@ -457,14 +457,44 @@ class User extends BaseModel {
 
   // Update user's wallet amount
   async updateWalletAmount(userId, amountInCents) {
-    const query = `
-      UPDATE users
-      SET wallet_amount = wallet_amount + $1
-      WHERE id = $2
-      RETURNING wallet_amount
-    `;
+    const query = 'UPDATE users SET wallet_amount = wallet_amount + $1 WHERE id = $2 RETURNING *';
     const result = await pool.query(query, [amountInCents, userId]);
     return result.rows[0];
+  }
+
+  // Update user password
+  async updatePassword(userId, currentPassword, newPassword) {
+    try {
+      // Get user with current password hash
+      const query = `
+        SELECT id, password_hash
+        FROM users
+        WHERE id = $1
+      `;
+      const result = await pool.query(query, [userId]);
+      const user = result.rows[0];
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Verify current password
+      const isValidPassword = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!isValidPassword) {
+        throw new Error('Current password is incorrect');
+      }
+
+      // Hash new password
+      const salt = await bcrypt.genSalt(10);
+      const newPasswordHash = await bcrypt.hash(newPassword, salt);
+
+      // Update password in database
+      const updateQuery = 'UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING id';
+      const updateResult = await pool.query(updateQuery, [newPasswordHash, userId]);
+      return updateResult.rows[0];
+    } catch (error) {
+      throw error;
+    }
   }
 }
 
