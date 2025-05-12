@@ -4,7 +4,7 @@ const stripe = require('../config/stripe');
 const pool = require('../config/database');
 const Payment = require('../models/Payment');
 const TaskRequest = require('../models/TaskRequest');
-const User = require('../models/User');
+const _User = require('../models/User');
 
 const paymentController = {
   // Create a checkout session

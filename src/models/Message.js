@@ -18,7 +18,8 @@ class Message extends BaseModel {
             user1_id INTEGER REFERENCES users(id),
             user2_id INTEGER REFERENCES users(id),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user1_id, user2_id)
+            UNIQUE(user1_id, user2_id),
+            CHECK (user1_id < user2_id)
           )
         `);
         console.log('Chats table created successfully');

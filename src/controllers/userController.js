@@ -1,11 +1,12 @@
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const _bcrypt = require('bcryptjs');
+const _jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const TaskerProfile = require('../models/TaskerProfile');
 const CustomerRequest = require('../models/CustomerRequest');
 const Message = require('../models/Message');
 const pool = require('../config/database');
-const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/jwt');
+
+const { _JWT_SECRET, _JWT_EXPIRES_IN } = process.env;
 require('dotenv').config();
 
 const userController = {

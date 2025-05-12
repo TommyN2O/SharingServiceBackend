@@ -282,9 +282,9 @@ const messageController = {
 
       const client = await pool.connect();
       try {
-        // Check if chat exists
+        // Check if chat exists in either order
         const chatCheckQuery = `
-          SELECT id FROM chats
+          SELECT id, user1_id, user2_id FROM chats
           WHERE (user1_id = $1 AND user2_id = $2)
              OR (user1_id = $2 AND user2_id = $1)
         `;
@@ -300,12 +300,14 @@ const messageController = {
           console.log('Found existing chat:', chatId);
         } else {
           // Create new chat if it doesn't exist
+          // Ensure user1_id is always less than user2_id
+          const [user1Id, user2Id] = userId < receiverId ? [userId, receiverId] : [receiverId, userId];
           const createChatQuery = `
             INSERT INTO chats (user1_id, user2_id, created_at)
             VALUES ($1, $2, NOW())
             RETURNING id
           `;
-          const newChat = await client.query(createChatQuery, [userId, receiverId]);
+          const newChat = await client.query(createChatQuery, [user1Id, user2Id]);
           chatId = newChat.rows[0].id;
           console.log('Created new chat:', chatId);
         }
@@ -514,33 +516,19 @@ const messageController = {
               'id', s.id,
               'name', s.name,
               'surname', s.surname,
-              'profile_photo', CASE 
-                WHEN EXISTS (
-                  SELECT 1 FROM task_requests tr 
-                  WHERE tr.tasker_id = s.id AND tr.sender_id = r.id
-                ) THEN COALESCE(sp.profile_photo, '')
-                ELSE COALESCE(s.profile_photo, '')
-              END,
+              'profile_photo', COALESCE(s.profile_photo, ''),
               'is_tasker', s.is_tasker
             ) as sender,
             json_build_object(
               'id', r.id,
               'name', r.name,
               'surname', r.surname,
-              'profile_photo', CASE 
-                WHEN EXISTS (
-                  SELECT 1 FROM task_requests tr 
-                  WHERE tr.tasker_id = r.id AND tr.sender_id = s.id
-                ) THEN COALESCE(rp.profile_photo, '')
-                ELSE COALESCE(r.profile_photo, '')
-              END,
+              'profile_photo', COALESCE(r.profile_photo, ''),
               'is_tasker', r.is_tasker
             ) as receiver
           FROM messages m
           JOIN users s ON m.sender_id = s.id
-          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
           JOIN users r ON m.receiver_id = r.id
-          LEFT JOIN tasker_profiles rp ON r.id = rp.user_id
           WHERE m.chat_id = $1
           ORDER BY m.created_at DESC
         `;

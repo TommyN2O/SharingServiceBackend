@@ -1,6 +1,7 @@
 const BaseModel = require('./BaseModel');
 const pool = require('../config/database');
-const auth = require('../middleware/auth');
+const _auth = require('../middleware/auth');
+const _City = require('./City');
 
 class TaskerProfile extends BaseModel {
   constructor() {

@@ -2,7 +2,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const BaseModel = require('./BaseModel');
 const pool = require('../config/database');
-const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/jwt');
+
+const { _JWT_SECRET, _JWT_EXPIRES_IN } = process.env;
 require('dotenv').config();
 
 class User extends BaseModel {
@@ -433,7 +434,7 @@ class User extends BaseModel {
       );
 
       // Update the token_created_at field and store the new token
-      const updatedUser = await this.update(userId, {
+      const _updatedUser = await this.update(userId, {
         token_created_at: now.toISOString(),
         current_token: token,
       });

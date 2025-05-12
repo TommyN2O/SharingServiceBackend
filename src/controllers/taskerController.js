@@ -310,7 +310,7 @@ const taskerController = {
         }
 
         // Update the main profile
-        const updatedProfile = await TaskerProfile.update(req.user.id, {
+        const _updatedProfile = await TaskerProfile.update(req.user.id, {
           profile_photo: finalProfilePhoto,
           description,
           hourly_rate: parseFloat(hourly_rate),
@@ -619,11 +619,11 @@ const taskerController = {
       }
 
       // Use the TaskerProfile update method
-      const updatedProfile = await TaskerProfile.update(req.user.id, {
+      const _updatedProfile = await TaskerProfile.update(req.user.id, {
         availability,
       });
 
-      res.status(200).json(updatedProfile);
+      res.status(200).json(_updatedProfile);
     } catch (error) {
       console.error('Error updating tasker availability:', error);
       res.status(500).json({
@@ -694,10 +694,8 @@ const taskerController = {
           u.id,
           u.name,
           u.surname,
-          COALESCE(s.profile_photo, '') as sender_profile_photo
+          COALESCE(u.profile_photo, '') as sender_profile_photo
         FROM users u
-        LEFT JOIN tasker_profiles tp ON u.id = tp.user_id
-        LEFT JOIN users s ON u.id = s.user_id
         WHERE u.id = $1
       `;
       const senderResult = await client.query(senderQuery, [sender_id]);
@@ -1263,7 +1261,7 @@ const taskerController = {
           });
         }
 
-        const tasker_profile_id = taskerProfileResult.rows[0].id;
+        const _tasker_profile_id = taskerProfileResult.rows[0].id;
 
         // Map 'Accepted' to 'Waiting for Payment'
         const newStatus = status === 'Accepted' ? 'Waiting for Payment' : status;

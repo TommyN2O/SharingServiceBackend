@@ -4,7 +4,7 @@ const cors = require('./config/corsConfig');
 const routes = require('./routes');
 const requestLogger = require('./middleware/requestLogger');
 const Category = require('./models/Category');
-const TaskerProfile = require('./models/TaskerProfile');
+const _TaskerProfile = require('./models/TaskerProfile');
 const pool = require('./config/database');
 const City = require('./models/City');
 const Payment = require('./models/Payment');
@@ -18,11 +18,11 @@ const supportTicketRoutes = require('./routes/supportTicketRoutes');
 const app = express();
 
 // Middleware
-app.use((req, res, next) => {
+app.use((req, res, _next) => {
   if (req.originalUrl === '/api/payment/webhook') {
-    next();
+    _next();
   } else {
-    express.json({ limit: '10mb' })(req, res, next);
+    express.json({ limit: '10mb' })(req, res, _next);
   }
 });
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -252,7 +252,7 @@ app.get('/api/cities', async (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   console.error('Error:', err);
   res.status(500).json({
     status: 'error',

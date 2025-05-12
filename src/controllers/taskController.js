@@ -4,6 +4,8 @@ const Message = require('../models/Message');
 const Review = require('../models/Review');
 const pool = require('../config/database');
 const paymentController = require('./paymentController');
+const TaskerProfile = require('../models/TaskerProfile');
+const TaskRequest = require('../models/TaskRequest');
 
 const taskController = {
   // Create a new customer request
