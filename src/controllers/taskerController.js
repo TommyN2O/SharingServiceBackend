@@ -895,7 +895,9 @@ const taskerController = {
             (
               SELECT json_agg(json_build_object(
                 'id', cat.id,
-                'name', cat.name
+                'name', cat.name,
+                'description', cat.description,
+                'image_url', cat.image_url
               ))
               FROM task_request_categories trc
               JOIN categories cat ON trc.category_id = cat.id
@@ -1601,7 +1603,9 @@ const taskerController = {
           (
             SELECT json_agg(json_build_object(
               'id', cat.id,
-              'name', cat.name
+              'name', cat.name,
+              'description', cat.description,
+              'image_url', cat.image_url
             ))
             FROM task_request_categories trc
             JOIN categories cat ON trc.category_id = cat.id
@@ -1707,7 +1711,9 @@ const taskerController = {
           (
             SELECT json_agg(json_build_object(
               'id', cat.id,
-              'name', cat.name
+              'name', cat.name,
+              'description', cat.description,
+              'image_url', cat.image_url
             ))
             FROM task_request_categories trc
             JOIN categories cat ON trc.category_id = cat.id
@@ -1810,7 +1816,9 @@ const taskerController = {
           (
             SELECT json_agg(json_build_object(
               'id', cat.id,
-              'name', cat.name
+              'name', cat.name,
+              'description', cat.description,
+              'image_url', cat.image_url
             ))
             FROM task_request_categories trc
             JOIN categories cat ON trc.category_id = cat.id
@@ -1911,7 +1919,9 @@ const taskerController = {
           (
             SELECT json_agg(json_build_object(
               'id', cat.id,
-              'name', cat.name
+              'name', cat.name,
+              'description', cat.description,
+              'image_url', cat.image_url
             ))
             FROM task_request_categories trc
             JOIN categories cat ON trc.category_id = cat.id

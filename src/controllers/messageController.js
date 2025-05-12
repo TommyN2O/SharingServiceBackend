@@ -263,12 +263,12 @@ const messageController = {
   // Create or get chat between two users
   async createChat(req, res) {
     try {
-      const userId = req.user.id;
-      const { receiverId } = req.body;
+      const userId = parseInt(req.user.id, 10);
+      const receiverId = parseInt(req.body.receiverId, 10);
 
-      if (!receiverId) {
+      if (!receiverId || isNaN(receiverId)) {
         return res.status(400).json({
-          error: 'receiverId is required',
+          error: 'receiverId is required and must be a valid number',
         });
       }
 
@@ -300,14 +300,16 @@ const messageController = {
           console.log('Found existing chat:', chatId);
         } else {
           // Create new chat if it doesn't exist
-          // Ensure user1_id is always less than user2_id
-          const [user1Id, user2Id] = userId < receiverId ? [userId, receiverId] : [receiverId, userId];
           const createChatQuery = `
             INSERT INTO chats (user1_id, user2_id, created_at)
-            VALUES ($1, $2, NOW())
+            VALUES (
+              LEAST($1::integer, $2::integer),
+              GREATEST($1::integer, $2::integer),
+              NOW()
+            )
             RETURNING id
           `;
-          const newChat = await client.query(createChatQuery, [user1Id, user2Id]);
+          const newChat = await client.query(createChatQuery, [userId, receiverId]);
           chatId = newChat.rows[0].id;
           console.log('Created new chat:', chatId);
         }
@@ -516,19 +518,33 @@ const messageController = {
               'id', s.id,
               'name', s.name,
               'surname', s.surname,
-              'profile_photo', COALESCE(s.profile_photo, ''),
+              'profile_photo', CASE 
+                WHEN EXISTS (
+                  SELECT 1 FROM task_requests tr 
+                  WHERE tr.tasker_id = s.id AND tr.sender_id = r.id
+                ) THEN COALESCE(sp.profile_photo, '')
+                ELSE COALESCE(s.profile_photo, '')
+              END,
               'is_tasker', s.is_tasker
             ) as sender,
             json_build_object(
               'id', r.id,
               'name', r.name,
               'surname', r.surname,
-              'profile_photo', COALESCE(r.profile_photo, ''),
+              'profile_photo', CASE 
+                WHEN EXISTS (
+                  SELECT 1 FROM task_requests tr 
+                  WHERE tr.tasker_id = r.id AND tr.sender_id = s.id
+                ) THEN COALESCE(rp.profile_photo, '')
+                ELSE COALESCE(r.profile_photo, '')
+              END,
               'is_tasker', r.is_tasker
             ) as receiver
           FROM messages m
           JOIN users s ON m.sender_id = s.id
+          LEFT JOIN tasker_profiles sp ON s.id = sp.user_id
           JOIN users r ON m.receiver_id = r.id
+          LEFT JOIN tasker_profiles rp ON r.id = rp.user_id
           WHERE m.chat_id = $1
           ORDER BY m.created_at DESC
         `;

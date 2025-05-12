@@ -237,44 +237,80 @@ const paymentController = {
           console.log('Payment Status:', session.payment_status);
           console.log('==============================');
 
-          // Add amount to tasker's wallet
-          const taskerQuery = 'SELECT wallet_amount FROM users WHERE id = $1';
-          const taskerResult = await pool.query(taskerQuery, [taskerId]);
-          const taskerWalletAmount = taskerResult.rows[0].wallet_amount || 0;
-          const newTaskerWalletAmount = taskerWalletAmount + amountInCents;
-          await pool.query(
-            'UPDATE users SET wallet_amount = $1 WHERE id = $2',
-            [newTaskerWalletAmount, taskerId],
-          );
+          const client = await pool.connect();
+          try {
+            await client.query('BEGIN');
 
-          // Create payment record for sender (payment)
-          await Payment.createPayment({
-            task_request_id: taskId,
-            amount: amount * -1, // Negative amount for sender
-            currency: 'EUR',
-            stripe_session_id: `${sessionPrefix}_sender_${session.id}`,
-            stripe_payment_intent_id: session.payment_intent,
-            status: 'completed',
-            user_id: senderId,
-            is_payment: true,
-          });
+            // Add amount to tasker's wallet
+            const taskerQuery = 'SELECT wallet_amount FROM users WHERE id = $1';
+            const taskerResult = await client.query(taskerQuery, [taskerId]);
+            const taskerWalletAmount = taskerResult.rows[0].wallet_amount || 0;
+            const newTaskerWalletAmount = taskerWalletAmount + amountInCents;
+            await client.query(
+              'UPDATE users SET wallet_amount = $1 WHERE id = $2',
+              [newTaskerWalletAmount, taskerId],
+            );
 
-          // Create payment record for tasker (earning)
-          await Payment.createPayment({
-            task_request_id: taskId,
-            amount, // Positive amount for tasker
-            currency: 'EUR',
-            stripe_session_id: `${sessionPrefix}_tasker_${session.id}`,
-            stripe_payment_intent_id: session.payment_intent,
-            status: 'completed',
-            user_id: taskerId,
-            is_payment: false,
-          });
+            // Create payment record for sender (payment)
+            await Payment.createPayment({
+              task_request_id: taskId,
+              amount: amount * -1, // Negative amount for sender
+              currency: 'EUR',
+              stripe_session_id: `${sessionPrefix}_sender_${session.id}`,
+              stripe_payment_intent_id: session.payment_intent,
+              status: 'completed',
+              user_id: senderId,
+              is_payment: true,
+            });
 
-          // Update task status to paid
-          await TaskRequest.updateStatus(taskId, 'paid');
-          console.log(`Payment completed and status updated for task ${taskId}`);
+            // Create payment record for tasker (earning)
+            await Payment.createPayment({
+              task_request_id: taskId,
+              amount, // Positive amount for tasker
+              currency: 'EUR',
+              stripe_session_id: `${sessionPrefix}_tasker_${session.id}`,
+              stripe_payment_intent_id: session.payment_intent,
+              status: 'completed',
+              user_id: taskerId,
+              is_payment: false,
+            });
 
+            // Update task status to paid
+            const updateTaskQuery = `
+              UPDATE task_requests tr
+              SET status = $1
+              FROM (
+                SELECT 
+                  tr.id,
+                  json_agg(json_build_object(
+                    'id', cat.id,
+                    'name', cat.name,
+                    'description', cat.description,
+                    'image_url', cat.image_url
+                  )) as categories
+                FROM task_requests tr
+                LEFT JOIN task_request_categories trc ON tr.id = trc.task_request_id
+                LEFT JOIN categories cat ON trc.category_id = cat.id
+                WHERE tr.id = $2
+                GROUP BY tr.id
+              ) cats
+              WHERE tr.id = $2
+              RETURNING 
+                tr.id,
+                tr.status,
+                cats.categories
+            `;
+            const updateResult = await client.query(updateTaskQuery, ['paid', taskId]);
+            const updatedTask = updateResult.rows[0];
+
+            await client.query('COMMIT');
+            console.log(`Payment completed and status updated for task ${taskId}`, updatedTask);
+          } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+          } finally {
+            client.release();
+          }
           break;
         }
       }
