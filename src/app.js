@@ -21,7 +21,7 @@ const app = express();
 // Middleware
 app.use((req, res, _next) => {
   if (req.originalUrl === '/api/payment/webhook') {
-    _next();
+    express.raw({ type: 'application/json' })(req, res, _next);
   } else {
     express.json({ limit: '10mb' })(req, res, _next);
   }
@@ -119,9 +119,10 @@ async function initializeDatabase() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS tasker_availability (
         id SERIAL PRIMARY KEY,
-        tasker_id INTEGER REFERENCES tasker_profiles(id),
-        date DATE,
-        time_slot TIME,
+        tasker_id INTEGER REFERENCES tasker_profiles(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        time_slot TIME NOT NULL,
+        is_available BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(tasker_id, date, time_slot)
       )
@@ -220,9 +221,6 @@ app.use('/api/users', userRoutes);
 app.use('/api/taskers', taskerRoutes);
 app.use('/api/support-tickets', supportTicketRoutes);
 app.use('/api/open-tasks', openTaskRoutes);
-
-// Special handling for Stripe webhook route
-app.use('/api/payment/webhook', express.raw({ type: 'application/json' }));
 
 // Regular JSON parsing for all other routes
 app.use(express.json());

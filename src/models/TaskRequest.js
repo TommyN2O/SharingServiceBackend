@@ -33,28 +33,68 @@ class TaskRequest extends BaseModel {
           tasker_id INTEGER REFERENCES users(id),
           hourly_rate DECIMAL(10,2) NOT NULL,
           status VARCHAR(50) DEFAULT 'pending',
+          is_open_task BOOLEAN DEFAULT false,
+          open_task_id INTEGER REFERENCES open_tasks(id),
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `;
       await pool.query(createTableQuery);
 
       // Check if hourly_rate column exists
-      const checkColumnQuery = `
+      const checkHourlyRateQuery = `
         SELECT column_name 
         FROM information_schema.columns 
         WHERE table_name = 'task_requests' 
         AND column_name = 'hourly_rate'
       `;
-      const result = await pool.query(checkColumnQuery);
+      const hourlyRateResult = await pool.query(checkHourlyRateQuery);
 
       // Add hourly_rate column if it doesn't exist
-      if (result.rows.length === 0) {
-        const alterTableQuery = `
+      if (hourlyRateResult.rows.length === 0) {
+        const alterHourlyRateQuery = `
           ALTER TABLE task_requests 
           ADD COLUMN hourly_rate DECIMAL(10,2) NOT NULL DEFAULT 0
         `;
-        await pool.query(alterTableQuery);
+        await pool.query(alterHourlyRateQuery);
         console.log('Added hourly_rate column to task_requests table');
+      }
+
+      // Check if is_open_task column exists
+      const checkOpenTaskQuery = `
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'task_requests' 
+        AND column_name = 'is_open_task'
+      `;
+      const openTaskResult = await pool.query(checkOpenTaskQuery);
+
+      // Add is_open_task column if it doesn't exist
+      if (openTaskResult.rows.length === 0) {
+        const alterOpenTaskQuery = `
+          ALTER TABLE task_requests 
+          ADD COLUMN is_open_task BOOLEAN DEFAULT false
+        `;
+        await pool.query(alterOpenTaskQuery);
+        console.log('Added is_open_task column to task_requests table');
+      }
+
+      // Check if open_task_id column exists
+      const checkOpenTaskIdQuery = `
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'task_requests' 
+        AND column_name = 'open_task_id'
+      `;
+      const openTaskIdResult = await pool.query(checkOpenTaskIdQuery);
+
+      // Add open_task_id column if it doesn't exist
+      if (openTaskIdResult.rows.length === 0) {
+        const alterOpenTaskIdQuery = `
+          ALTER TABLE task_requests 
+          ADD COLUMN open_task_id INTEGER REFERENCES open_tasks(id)
+        `;
+        await pool.query(alterOpenTaskIdQuery);
+        console.log('Added open_task_id column to task_requests table');
       }
     } catch (error) {
       console.error('Error creating task requests table:', error);

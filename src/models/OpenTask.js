@@ -386,9 +386,11 @@ class OpenTask extends BaseModel {
           sender_id,
           tasker_id,
           hourly_rate,
-          status
+          status,
+          is_open_task,
+          open_task_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING *
       `;
       const taskRequestResult = await client.query(taskRequestQuery, [
@@ -398,14 +400,18 @@ class OpenTask extends BaseModel {
         offer.creator_id,            // Task creator becomes sender
         offer.tasker_id,            // Tasker from offer
         hourlyRate,                  // Use the exact hourly rate from the offer
-        'Waiting for Payment'        // Initial status
+        'Waiting for Payment',       // Initial status
+        true,                        // Mark as created from open task
+        offer.task_id               // Store the original open task ID
       ]);
 
       // Log the created task request to verify the hourly rate
       console.log('Created task request:', {
         id: taskRequestResult.rows[0].id,
         hourly_rate: taskRequestResult.rows[0].hourly_rate,
-        duration: taskRequestResult.rows[0].duration
+        duration: taskRequestResult.rows[0].duration,
+        is_open_task: taskRequestResult.rows[0].is_open_task,
+        open_task_id: taskRequestResult.rows[0].open_task_id
       });
 
       // Add availability from the offer

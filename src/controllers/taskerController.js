@@ -520,10 +520,51 @@ const taskerController = {
     }
   },
 
+  // Helper function to remove expired availability slots
+  async removeExpiredAvailability(client, taskerId = null) {
+    try {
+      const currentDate = new Date().toISOString().split('T')[0];
+      const currentTime = new Date().toTimeString().split(' ')[0];
+      
+      let query = `
+        DELETE FROM tasker_availability 
+        WHERE (date < $1) 
+        OR (date = $1 AND time_slot < $2)
+      `;
+      
+      const params = [currentDate, currentTime];
+      
+      // If taskerId is provided, only remove for that tasker
+      if (taskerId) {
+        query += ' AND tasker_id = $3';
+        params.push(taskerId);
+      }
+      
+      await client.query(query, params);
+    } catch (error) {
+      console.error('Error removing expired availability:', error);
+    }
+  },
+
   // Get all tasker profiles
   async getAllProfiles(req, res) {
     try {
       console.log('Getting all tasker profiles with filters:', req.query);
+      const client = await pool.connect();
+      
+      try {
+        await client.query('BEGIN');
+        
+        // Remove expired availability slots
+        const currentDate = new Date().toISOString().split('T')[0];
+        const currentTime = new Date().toTimeString().split(' ')[0];
+        
+        await client.query(`
+          DELETE FROM tasker_availability 
+          WHERE (date < $1) 
+          OR (date = $1 AND time_slot < $2)
+        `, [currentDate, currentTime]);
+        
       const filters = {
         category: req.query.category ? parseInt(req.query.category) : null,
         rating: req.query.rating ? req.query.rating : null,
@@ -534,8 +575,17 @@ const taskerController = {
         minPrice: req.query.minPrice ? parseFloat(req.query.minPrice) : null,
         maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice) : null,
       };
+
       const profiles = await TaskerProfile.getAllProfiles(filters);
+        
+        await client.query('COMMIT');
       res.json(profiles);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       console.error('Error getting all tasker profiles:', error);
       res.status(500).json({ error: 'Failed to get tasker profiles' });
@@ -547,6 +597,22 @@ const taskerController = {
     try {
       const { id } = req.params;
       console.log('Getting tasker profile by ID:', id);
+      
+      const client = await pool.connect();
+      
+      try {
+        await client.query('BEGIN');
+        
+        // Remove expired availability slots
+        const currentDate = new Date().toISOString().split('T')[0];
+        const currentTime = new Date().toTimeString().split(' ')[0];
+        
+        await client.query(`
+          DELETE FROM tasker_availability 
+          WHERE (date < $1) 
+          OR (date = $1 AND time_slot < $2)
+          AND tasker_id = $3
+        `, [currentDate, currentTime, id]);
 
       const profile = await TaskerProfile.getProfileById(id);
 
@@ -554,10 +620,36 @@ const taskerController = {
         return res.status(404).json({ error: 'Tasker profile not found' });
       }
 
+        await client.query('COMMIT');
       res.json(profile);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       console.error('Error getting tasker profile by ID:', error);
       res.status(500).json({ error: 'Failed to get tasker profile' });
+    }
+  },
+
+  // Cleanup expired availability (can be called periodically)
+  async cleanupExpiredAvailability(req, res) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      await this.removeExpiredAvailability(client);
+      
+      await client.query('COMMIT');
+      res.json({ message: 'Successfully cleaned up expired availability slots' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error cleaning up expired availability:', error);
+      res.status(500).json({ error: 'Failed to cleanup expired availability' });
+    } finally {
+      client.release();
     }
   },
 
@@ -604,7 +696,7 @@ const taskerController = {
         // Validate date format (YYYY-MM-DD)
         if (!/^\d{4}-\d{2}-\d{2}$/.test(slot.date)) {
           return res.status(400).json({
-            error: 'Date must be in YYYY-MM-DD format',
+            error: 'Date must be in YYYY-MM-DD format (e.g. 2024-03-20)',
             invalidDate: slot.date,
           });
         }
@@ -612,22 +704,44 @@ const taskerController = {
         // Validate time format (HH:mm:ss)
         if (!/^([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/.test(slot.time)) {
           return res.status(400).json({
-            error: 'Time must be in HH:mm:ss format',
+            error: 'Time must be in HH:mm:ss format (e.g. 14:30:00)',
             invalidTime: slot.time,
+          });
+        }
+
+        // Validate that date is not in the past
+        const slotDate = new Date(slot.date + 'T' + slot.time);
+        const now = new Date();
+        if (slotDate < now) {
+          return res.status(400).json({
+            error: 'Cannot set availability for past dates',
+            invalidSlot: slot,
           });
         }
       }
 
+      try {
       // Use the TaskerProfile update method
-      const _updatedProfile = await TaskerProfile.update(req.user.id, {
+        const updatedProfile = await TaskerProfile.update(req.user.id, {
         availability,
       });
 
-      res.status(200).json(_updatedProfile);
+        // Send success response with updated profile
+        res.status(200).json({
+          message: 'Availability updated successfully',
+          profile: updatedProfile,
+        });
     } catch (error) {
-      console.error('Error updating tasker availability:', error);
-      res.status(500).json({
+        console.error('Error updating availability:', error);
+        return res.status(500).json({
         error: 'Failed to update availability',
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        });
+      }
+    } catch (error) {
+      console.error('Error in updateAvailability:', error);
+      res.status(500).json({
+        error: 'Internal server error',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
@@ -880,6 +994,8 @@ const taskerController = {
             tr.duration,
             tr.status,
             tr.created_at,
+            tr.is_open_task,
+            tr.open_task_id,
             NULL::decimal as budget,
             c.id as city_id,
             c.name as city_name,
@@ -916,12 +1032,12 @@ const taskerController = {
             COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
             CASE 
-              WHEN tr.status = 'Waiting for Payment' THEN tr.hourly_rate
+              WHEN tr.status IN ('Accepted', 'paid', 'Completed') THEN tr.hourly_rate
               ELSE tp.hourly_rate
             END as tasker_hourly_rate,
             -- Gallery as JSON array with relative paths and forward slashes
             COALESCE(
-              (
+            (
                 SELECT json_agg(
                   CASE 
                     WHEN trg.image_url LIKE 'C:%' OR trg.image_url LIKE '/C:%' 
@@ -929,8 +1045,8 @@ const taskerController = {
                     ELSE replace(trg.image_url, '\\', '/')
                   END
                 )
-                FROM task_request_gallery trg
-                WHERE trg.task_request_id = tr.id
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
               ),
               '[]'::json
             ) as gallery
@@ -951,6 +1067,8 @@ const taskerController = {
             ot.duration,
             ot.status,
             ot.created_at,
+            false as is_open_task,
+            NULL::integer as open_task_id,
             ot.budget,
             c.id as city_id,
             c.name as city_name,
@@ -1004,6 +1122,12 @@ const taskerController = {
           JOIN categories cat ON ot.category_id = cat.id
           JOIN users s ON ot.creator_id = s.id
           WHERE ot.creator_id = $1
+          AND NOT EXISTS (
+            SELECT 1 
+            FROM task_requests tr 
+            WHERE tr.open_task_id = ot.id 
+            AND tr.is_open_task = true
+          )
 
           ORDER BY created_at DESC
         `;
@@ -1040,7 +1164,9 @@ const taskerController = {
           gallery: row.gallery || [],
           status: row.status,
           created_at: row.created_at,
-          budget: row.budget
+          budget: row.budget,
+          is_open_task: row.is_open_task,
+          open_task_id: row.open_task_id
         }));
 
         // Debug: Log sample task if available
@@ -1107,7 +1233,7 @@ const taskerController = {
             COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
             CASE 
-              WHEN tr.status = 'Waiting for Payment' THEN tr.hourly_rate
+              WHEN tr.status IN ('Accepted', 'paid', 'Completed') THEN tr.hourly_rate
               ELSE tp.hourly_rate
             END as tasker_hourly_rate,
             -- Categories as JSON array
@@ -1230,7 +1356,7 @@ const taskerController = {
             COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
             CASE 
-              WHEN tr.status = 'Waiting for Payment' THEN tr.hourly_rate
+              WHEN tr.status IN ('Accepted', 'paid', 'Completed') THEN tr.hourly_rate
               ELSE tp.hourly_rate
             END as tasker_hourly_rate,
             -- Categories as JSON array
@@ -1323,185 +1449,53 @@ const taskerController = {
 
   // Update task request status
   async updateTaskRequestStatus(req, res) {
+    const { id } = req.params;
+    const { status } = req.body;
+
     try {
-      const user_id = req.user.id;
-      const task_id = req.params.id;
-      const { status } = req.body;
-
-      console.log('Updating task request ID:', task_id, 'for user ID:', user_id, 'with status:', status);
-
-      if (!status) {
-        return res.status(400).json({
-          error: 'Status is required in request body',
-        });
-      }
-
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
 
-        // First get the tasker's profile
-        const taskerProfileResult = await client.query(
-          'SELECT id FROM tasker_profiles WHERE user_id = $1',
-          [user_id],
-        );
-
-        if (taskerProfileResult.rows.length === 0) {
-          return res.status(403).json({
-            error: 'Tasker profile not found',
-          });
+        // Get current task status
+        const currentStatusQuery = 'SELECT status FROM task_requests WHERE id = $1';
+        const currentStatusResult = await client.query(currentStatusQuery, [id]);
+        
+        if (!currentStatusResult.rows.length) {
+          return res.status(404).json({ error: 'Task request not found' });
         }
 
-        const _tasker_profile_id = taskerProfileResult.rows[0].id;
+        const currentStatus = currentStatusResult.rows[0].status;
+        console.log('Current status:', currentStatus, 'New status:', status);
 
-        // Map 'Accepted' to 'Waiting for Payment'
-        const newStatus = status === 'Accepted' ? 'Waiting for Payment' : status;
-
-        // Update the status using tasker_profile_id
-        const updateResult = await client.query(`
-          UPDATE task_requests
-          SET status = $1 
-          WHERE id = $2 
-          AND tasker_id = $3
-          RETURNING id
-        `, [newStatus, task_id, user_id]);
-
-        if (updateResult.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Task request not found or you do not have permission to update it',
-          });
-        }
-
-        // If status is completed, handle payment completion
-        if (newStatus.toLowerCase() === 'completed') {
-          // Get the payment record
-          const payment = await Payment.getByTaskRequestId(task_id);
-          if (!payment) {
-            throw new Error('Payment record not found');
+        // If task is being canceled and was previously paid, handle payment refund
+        if (status === 'Canceled' && currentStatus === 'paid') {
+          try {
+            const refundResult = await Payment.handleTaskCancellation(id);
+            console.log('Payment refund result:', refundResult);
+          } catch (error) {
+            console.error('Error handling payment refund:', error);
+            await client.query('ROLLBACK');
+            return res.status(500).json({ error: 'Failed to process payment refund' });
           }
-
-          // Update payment status to completed
-          await Payment.updateStatusToCompleted(task_id);
-
-          // Update tasker's wallet
-          const amountInCents = Math.round(payment.amount * 100);
-          await User.updateWalletAmount(user_id, amountInCents);
-          console.log(`Updated wallet for tasker ${user_id} with amount ${amountInCents} cents`);
         }
 
-        // Get updated task request details
-        const query = `
-          SELECT 
-            tr.id,
-            tr.description,
-            tr.duration,
-            tr.status,
-            tr.created_at,
-            -- City details
-            c.id as city_id,
-            c.name as city_name,
-            -- Categories as JSON array
-            (
-              SELECT json_agg(json_build_object(
-                'id', cat.id,
-                'name', cat.name,
-                'description', cat.description,
-                'image_url', cat.image_url
-              ))
-              FROM task_request_categories trc
-              JOIN categories cat ON trc.category_id = cat.id
-              WHERE trc.task_request_id = tr.id
-            ) as categories,
-            -- Sender details
-            s.id as sender_id,
-            s.name as sender_name,
-            s.surname as sender_surname,
-            COALESCE(s.profile_photo, '') as sender_profile_photo,
-            -- Tasker details
-            t.id as tasker_id,
-            t.name as tasker_name,
-            t.surname as tasker_surname,
-            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
-            tp.description as tasker_description,
-            CASE 
-              WHEN tr.status = 'Waiting for Payment' THEN tr.hourly_rate
-              ELSE tp.hourly_rate
-            END as tasker_hourly_rate,
-            -- Availability as JSON array
-            (
-              SELECT json_agg(json_build_object(
-                'date', to_char(tra.date, 'YYYY-MM-DD'),
-                'time', to_char(tra.time_slot, 'HH24:MI:SS')
-              ))
-              FROM task_request_availability tra
-              WHERE tra.task_request_id = tr.id
-            ) as availability,
-            -- Gallery as JSON array
-            COALESCE(
-              (
-                SELECT json_agg(trg.image_url)
-                FROM task_request_gallery trg
-                WHERE trg.task_request_id = tr.id
-              ),
-              '[]'::json
-            ) as gallery
-          FROM task_requests tr
-          JOIN cities c ON tr.city_id = c.id
-          JOIN users s ON tr.sender_id = s.id
-          JOIN users t ON tr.tasker_id = t.id
-          JOIN tasker_profiles tp ON t.id = tp.user_id
-          WHERE tr.id = $1
-        `;
-
-        const result = await client.query(query, [task_id]);
+        // Update task status
+        const updateQuery = 'UPDATE task_requests SET status = $1 WHERE id = $2 RETURNING *';
+        const result = await client.query(updateQuery, [status, id]);
 
         await client.query('COMMIT');
-
-        // Format the response
-        const row = result.rows[0];
-        const taskRequest = {
-          id: row.id,
-          description: row.description,
-          city: {
-            id: row.city_id,
-            name: row.city_name,
-          },
-          categories: row.categories || [],
-          duration: row.duration,
-          availability: row.availability || [],
-          sender: {
-            id: row.sender_id,
-            name: row.sender_name,
-            surname: row.sender_surname,
-            profile_photo: row.sender_profile_photo,
-          },
-          tasker: {
-            id: row.tasker_id,
-            name: row.tasker_name,
-            surname: row.tasker_surname,
-            profile_photo: row.tasker_profile_photo,
-            description: row.tasker_description,
-            hourly_rate: row.tasker_hourly_rate,
-          },
-          gallery: row.gallery || [],
-          status: row.status,
-          created_at: row.created_at,
-        };
-
-        console.log('Updated task request:', JSON.stringify(taskRequest, null, 2));
-        res.json(taskRequest);
+        res.json(result.rows[0]);
       } catch (error) {
         await client.query('ROLLBACK');
+        console.error('Error in transaction:', error);
         throw error;
       } finally {
         client.release();
       }
     } catch (error) {
       console.error('Error updating task request status:', error);
-      res.status(500).json({
-        error: 'Failed to update task request status',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      });
+      res.status(500).json({ error: 'Failed to update task request status' });
     }
   },
 
@@ -1523,6 +1517,9 @@ const taskerController = {
             tr.duration,
             tr.status,
             tr.created_at,
+            tr.is_open_task,
+            tr.open_task_id,
+            NULL::decimal as budget,
             c.id as city_id,
             c.name as city_name,
             -- Categories as JSON array
@@ -1558,12 +1555,12 @@ const taskerController = {
             COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
             CASE 
-              WHEN tr.status = 'Waiting for Payment' THEN tr.hourly_rate
+              WHEN tr.status IN ('Accepted', 'paid', 'Completed') THEN tr.hourly_rate
               ELSE tp.hourly_rate
             END as tasker_hourly_rate,
             -- Gallery as JSON array with relative paths and forward slashes
             COALESCE(
-              (
+            (
                 SELECT json_agg(
                   CASE 
                     WHEN trg.image_url LIKE 'C:%' OR trg.image_url LIKE '/C:%' 
@@ -1571,8 +1568,8 @@ const taskerController = {
                     ELSE replace(trg.image_url, '\\', '/')
                   END
                 )
-                FROM task_request_gallery trg
-                WHERE trg.task_request_id = tr.id
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
               ),
               '[]'::json
             ) as gallery
@@ -1647,30 +1644,30 @@ const taskerController = {
           const openTaskResult = await client.query(openTaskQuery, [sender_id, task_id]);
 
           if (openTaskResult.rows.length === 0) {
-            return res.status(404).json({
-              error: 'Task not found or you do not have permission to view it',
-            });
-          }
+          return res.status(404).json({
+            error: 'Task not found or you do not have permission to view it',
+          });
+        }
 
           // Format open task response
           const row = openTaskResult.rows[0];
-          const task = {
+        const task = {
             task_type: row.task_type,
-            id: row.id,
-            description: row.description,
-            city: {
-              id: row.city_id,
-              name: row.city_name,
-            },
-            categories: row.categories || [],
-            duration: row.duration,
-            availability: row.availability || [],
-            sender: {
-              id: row.sender_id,
-              name: row.sender_name,
-              surname: row.sender_surname,
-              profile_photo: row.sender_profile_photo,
-            },
+          id: row.id,
+          description: row.description,
+          city: {
+            id: row.city_id,
+            name: row.city_name,
+          },
+          categories: row.categories || [],
+          duration: row.duration,
+          availability: row.availability || [],
+          sender: {
+            id: row.sender_id,
+            name: row.sender_name,
+            surname: row.sender_surname,
+            profile_photo: row.sender_profile_photo,
+          },
             tasker: null,
             gallery: row.gallery || [],
             status: row.status,
@@ -1701,17 +1698,20 @@ const taskerController = {
             surname: row.sender_surname,
             profile_photo: row.sender_profile_photo,
           },
-          tasker: {
+          tasker: row.tasker_id ? {
             id: row.tasker_id,
             name: row.tasker_name,
             surname: row.tasker_surname,
             profile_photo: row.tasker_profile_photo,
             description: row.tasker_description,
             hourly_rate: row.tasker_hourly_rate,
-          },
+          } : null,
           gallery: row.gallery || [],
           status: row.status,
           created_at: row.created_at,
+          budget: row.budget,
+          is_open_task: row.is_open_task,
+          open_task_id: row.open_task_id
         };
 
         console.log('Found task request:', JSON.stringify(task, null, 2));
@@ -2252,7 +2252,7 @@ const taskerController = {
         JOIN users s ON tr.sender_id = s.id
         JOIN users t ON tr.tasker_id = t.id
         WHERE p.user_id = $1
-        AND p.status = 'completed'
+        AND p.status IN ('completed', 'on hold', 'refunded')
         ORDER BY p.created_at DESC
       `;
 
@@ -2263,10 +2263,12 @@ const taskerController = {
         wallet_amount: userResult.rows[0].wallet_amount || 0,
         transactions: transactionsResult.rows.map((row) => ({
           payment_id: row.payment_id,
-          amount: row.is_payment ? row.amount * -1 : row.amount, // Negative for payments made, positive for earnings
+          amount: row.payment_status === 'refunded' ? 
+            Math.abs(row.amount) : // Make refunded amount positive before negating
+            (row.is_payment ? row.amount * -1 : row.amount), // Normal payment logic
           payment_date: row.payment_date,
           payment_status: row.payment_status,
-          transaction_type: row.is_payment ? 'payment' : 'earning',
+          transaction_type: row.payment_status === 'refunded' ? 'refund' : (row.is_payment ? 'payment' : 'earning'),
           task: {
             id: row.task_id,
             category: row.categories || '',
@@ -2319,6 +2321,185 @@ const taskerController = {
         error: 'Failed to check tasker status',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined 
       });
+    }
+  },
+
+  // Convert task request to open task
+  async convertToOpenTask(req, res) {
+    const client = await pool.connect();
+    try {
+      const user_id = req.user.id;
+      const task_id = req.params.id;
+      const { budget, availability } = req.body; // Get budget and availability from request body
+
+      if (!budget || !availability || !Array.isArray(availability) || availability.length === 0) {
+        return res.status(400).json({
+          error: 'Budget and availability array are required'
+        });
+      }
+
+      console.log('Converting task request to open task:', {
+        taskId: task_id,
+        userId: user_id,
+        budget,
+        availability
+      });
+
+      await client.query('BEGIN');
+
+      // First get the task request details
+      const taskRequestQuery = `
+        SELECT 
+          tr.*,
+          array_agg(DISTINCT trc.category_id) as category_ids,
+          array_agg(DISTINCT trg.image_url) as gallery_images
+        FROM task_requests tr
+        LEFT JOIN task_request_categories trc ON tr.id = trc.task_request_id
+        LEFT JOIN task_request_gallery trg ON tr.id = trg.task_request_id
+        WHERE tr.id = $1 AND tr.sender_id = $2
+        GROUP BY tr.id
+      `;
+
+      const taskRequestResult = await client.query(taskRequestQuery, [task_id, user_id]);
+
+      if (taskRequestResult.rows.length === 0) {
+        return res.status(404).json({
+          error: 'Task request not found or you do not have permission to modify it'
+        });
+      }
+
+      const taskRequest = taskRequestResult.rows[0];
+      console.log('Task request details:', taskRequest);
+
+      // Create new open task
+      const createOpenTaskQuery = `
+        INSERT INTO open_tasks (
+          description,
+          budget,
+          duration,
+          location_id,
+          creator_id,
+          category_id,
+          status,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        RETURNING *
+      `;
+
+      const categoryId = taskRequest.category_ids[0];
+
+      // Create the open task with the provided budget
+      const openTaskResult = await client.query(createOpenTaskQuery, [
+        taskRequest.description,
+        budget,  // Use the budget from request body
+        taskRequest.duration,
+        taskRequest.city_id,
+        user_id,
+        categoryId,
+        'open'
+      ]);
+
+      const openTask = openTaskResult.rows[0];
+      console.log('Created open task:', openTask);
+
+      // Clear any existing availability slots (just in case)
+      await client.query('DELETE FROM open_task_dates WHERE task_id = $1', [openTask.id]);
+
+      // Add new availability slots
+      for (const slot of availability) {
+        await client.query(
+          `INSERT INTO open_task_dates (task_id, date, time)
+           VALUES ($1, $2, $3)`,
+          [openTask.id, slot.date, slot.time]
+        );
+      }
+      console.log('Added availability slots:', availability);
+
+      // Copy gallery images
+      if (taskRequest.gallery_images && taskRequest.gallery_images.length > 0) {
+        for (const imageUrl of taskRequest.gallery_images) {
+          if (imageUrl) {
+            await client.query(
+              `INSERT INTO open_task_photos (task_id, photo_url)
+               VALUES ($1, $2)`,
+              [openTask.id, imageUrl]
+            );
+          }
+        }
+      }
+
+      // Delete the original task request
+      await client.query('DELETE FROM task_requests WHERE id = $1', [task_id]);
+
+      // Get the complete open task with all details
+      const completeTaskQuery = `
+        SELECT 
+          ot.*,
+          jsonb_build_object(
+            'id', c.id,
+            'name', c.name
+          ) as city,
+          jsonb_build_object(
+            'id', cat.id,
+            'name', cat.name,
+            'description', cat.description,
+            'image_url', cat.image_url
+          ) as category,
+          jsonb_build_object(
+            'id', u.id,
+            'name', u.name,
+            'surname', u.surname,
+            'profile_photo', u.profile_photo
+          ) as creator,
+          COALESCE(
+            json_agg(
+              DISTINCT jsonb_build_object(
+                'date', to_char(otd.date, 'YYYY-MM-DD'),
+                'time', to_char(otd.time, 'HH24:MI:SS')
+              )
+            ) FILTER (WHERE otd.date IS NOT NULL),
+            '[]'
+          ) as availability,
+          COALESCE(
+            json_agg(
+              DISTINCT regexp_replace(
+                otp.photo_url,
+                '^.*\\\\public\\\\|^.*public/',
+                ''
+              )
+            ) FILTER (WHERE otp.photo_url IS NOT NULL),
+            '[]'
+          ) as gallery
+        FROM open_tasks ot
+        JOIN cities c ON ot.location_id = c.id
+        JOIN categories cat ON ot.category_id = cat.id
+        JOIN users u ON ot.creator_id = u.id
+        LEFT JOIN open_task_dates otd ON ot.id = otd.task_id
+        LEFT JOIN open_task_photos otp ON ot.id = otp.task_id
+        WHERE ot.id = $1
+        GROUP BY ot.id, c.id, c.name, cat.id, cat.name, cat.description, cat.image_url,
+                 u.id, u.name, u.surname, u.profile_photo
+      `;
+
+      const completeTask = await client.query(completeTaskQuery, [openTask.id]);
+
+      await client.query('COMMIT');
+
+      res.json({
+        message: 'Successfully converted task request to open task',
+        task: completeTask.rows[0]
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error converting task request to open task:', error);
+      res.status(500).json({
+        error: 'Failed to convert task request to open task',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    } finally {
+      client.release();
     }
   },
 };

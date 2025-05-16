@@ -28,6 +28,8 @@ const {
   getReceivedCompletedTasks,
   getWalletPayments,
   checkIfTasker,
+  convertToOpenTask,
+  cleanupExpiredAvailability,
 } = require('../controllers/taskerController');
 
 // Apply authentication middleware to all routes
@@ -61,6 +63,7 @@ router.post('/tasks/:taskId/offer', sendOffer);
 router.post('/tasks/:taskId/accept', acceptTask);
 router.put('/tasks/:taskId/status', updateTaskStatus);
 router.put('/tasks/received/:id/status', updateTaskRequestStatus);
+router.put('/task-requests/:id/convert-to-open', convertToOpenTask);
 
 // Task creation route
 router.post('/send-request', uploadFields, sendTaskRequest);
@@ -71,6 +74,7 @@ router.get('/profiles/:id', getProfileById);
 
 // Availability management
 router.put('/availability', updateAvailability);
+router.post('/availability/cleanup', cleanupExpiredAvailability);
 
 // Test endpoints
 router.post('/test/data', insertTestData);

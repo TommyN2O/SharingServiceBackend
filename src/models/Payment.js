@@ -14,6 +14,7 @@ class Payment extends BaseModel {
       await this.addStatusColumn();
       await this.addUserIdColumn();
       await this.addIsPaymentColumn();
+      await this.createPendingPaymentsTable();
       console.log('Payments table initialized successfully');
     } catch (error) {
       console.error('Error initializing payments table:', error);
@@ -114,36 +115,138 @@ class Payment extends BaseModel {
     }
   }
 
+  // Create pending payments table
+  async createPendingPaymentsTable() {
+    try {
+      const query = `
+        CREATE TABLE IF NOT EXISTS pending_payments (
+          id SERIAL PRIMARY KEY,
+          task_request_id INTEGER REFERENCES task_requests(id) ON DELETE CASCADE,
+          tasker_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          amount DECIMAL(10,2) NOT NULL,
+          stripe_session_id VARCHAR(255) NOT NULL,
+          stripe_payment_intent_id VARCHAR(255),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `;
+      await pool.query(query);
+      console.log('Pending payments table created successfully');
+    } catch (error) {
+      console.error('Error creating pending payments table:', error);
+      throw error;
+    }
+  }
+
   // Create a new payment record
   async createPayment(data) {
-    const query = `
-      INSERT INTO payments (
-        task_request_id,
-        amount,
-        currency,
-        stripe_session_id,
-        stripe_payment_intent_id,
-        status,
-        user_id,
-        is_payment
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *
-    `;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    const values = [
-      data.task_request_id,
-      data.amount,
-      data.currency || 'EUR',
-      data.stripe_session_id,
-      data.stripe_payment_intent_id,
-      data.status || 'waiting',
-      data.user_id,
-      data.is_payment,
-    ];
+      // Parse task_request_id and amount if they're strings
+      const taskRequestId = parseInt(data.task_request_id);
+      const amount = parseFloat(data.amount);
 
-    const result = await pool.query(query, values);
-    return result.rows[0];
+      if (isNaN(taskRequestId) || isNaN(amount)) {
+        throw new Error('Invalid task_request_id or amount');
+      }
+
+      // Check if payment already exists
+      const existingPaymentQuery = `
+        SELECT id FROM payments 
+        WHERE task_request_id = $1 
+        AND stripe_session_id LIKE $2
+      `;
+      const existingPayment = await client.query(existingPaymentQuery, [
+        taskRequestId,
+        `%${data.stripe_session_id}%`
+      ]);
+
+      if (existingPayment.rows.length > 0) {
+        await client.query('COMMIT');
+        return { success: true, message: 'Payment already processed' };
+      }
+
+      // Get task request details to get sender and tasker IDs
+      const taskQuery = `
+        SELECT sender_id, tasker_id, duration
+        FROM task_requests
+        WHERE id = $1
+      `;
+      const taskResult = await client.query(taskQuery, [taskRequestId]);
+      
+      if (!taskResult.rows.length) {
+        throw new Error('Task request not found');
+      }
+
+      const { sender_id, tasker_id, duration } = taskResult.rows[0];
+      const serviceFee = 2.50 * duration; // Service fee is 2.50 per hour
+      const taskerAmount = Math.abs(amount) - serviceFee;
+
+      // Create sender's payment record (on hold)
+      const senderSessionId = `payer_${sender_id}_${taskRequestId}_sender_${data.stripe_session_id}`;
+      const senderPaymentQuery = `
+        INSERT INTO payments (
+          task_request_id,
+          user_id,
+          amount,
+          currency,
+          stripe_session_id,
+          stripe_payment_intent_id,
+          status,
+          is_payment
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (stripe_session_id) DO NOTHING
+        RETURNING id
+      `;
+      await client.query(senderPaymentQuery, [
+        taskRequestId,
+        sender_id,
+        Math.abs(amount)*-1,
+        data.currency || 'EUR',
+        senderSessionId,
+        data.stripe_payment_intent_id,
+        'on hold',
+        true
+      ]);
+
+      // Create tasker's payment record (pending)
+      const taskerSessionId = `tasker_${sender_id}_${taskRequestId}_tasker_${data.stripe_session_id}`;
+      const taskerPaymentQuery = `
+        INSERT INTO payments (
+          task_request_id,
+          user_id,
+          amount,
+          currency,
+          stripe_session_id,
+          stripe_payment_intent_id,
+          status,
+          is_payment
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (stripe_session_id) DO NOTHING
+        RETURNING id
+      `;
+      await client.query(taskerPaymentQuery, [
+        taskRequestId,
+        tasker_id,
+        taskerAmount,
+        data.currency || 'EUR',
+        taskerSessionId,
+        data.stripe_payment_intent_id,
+        'pending',
+        false
+      ]);
+
+      await client.query('COMMIT');
+      return { success: true, message: 'Payments created successfully' };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   // Get payment by task request ID
@@ -159,14 +262,78 @@ class Payment extends BaseModel {
 
   // Update payment status to completed
   async updateStatusToCompleted(taskRequestId) {
-    const query = `
-      UPDATE payments
-      SET status = 'completed'
-      WHERE task_request_id = $1
-      RETURNING *
-    `;
-    const result = await pool.query(query, [taskRequestId]);
-    return result.rows[0];
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Get task request details
+        const taskQuery = `
+          SELECT sender_id, tasker_id
+          FROM task_requests
+          WHERE id = $1
+        `;
+        const taskResult = await client.query(taskQuery, [taskRequestId]);
+        
+        if (!taskResult.rows.length) {
+          throw new Error('Task request not found');
+        }
+
+        const { sender_id, tasker_id } = taskResult.rows[0];
+
+        // Update sender's payment status to completed
+        await client.query(`
+          UPDATE payments 
+          SET status = 'completed' 
+          WHERE task_request_id = $1 
+          AND user_id = $2
+          AND is_payment = true
+        `, [taskRequestId, sender_id]);
+
+        // Get tasker's payment record
+        const taskerPaymentQuery = `
+          SELECT amount 
+          FROM payments 
+          WHERE task_request_id = $1 
+          AND user_id = $2 
+          AND is_payment = false
+        `;
+        const taskerPaymentResult = await client.query(taskerPaymentQuery, [taskRequestId, tasker_id]);
+
+        if (!taskerPaymentResult.rows.length) {
+          throw new Error('Tasker payment record not found');
+        }
+
+        const taskerAmount = taskerPaymentResult.rows[0].amount;
+
+        // Update tasker's payment status to completed and add amount to wallet
+        await client.query(`
+          UPDATE payments 
+          SET status = 'completed' 
+          WHERE task_request_id = $1 
+          AND user_id = $2
+          AND is_payment = false
+        `, [taskRequestId, tasker_id]);
+
+        // Add amount to tasker's wallet
+        const amountInCents = Math.round(taskerAmount * 100);
+        await client.query(`
+          UPDATE users 
+          SET wallet_amount = wallet_amount + $1 
+          WHERE id = $2
+        `, [amountInCents, tasker_id]);
+
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Error updating payment status:', error);
+      throw error;
+    }
   }
 
   // Update payment status to canceled
@@ -179,6 +346,87 @@ class Payment extends BaseModel {
     `;
     const result = await pool.query(query, [taskRequestId]);
     return result.rows[0];
+  }
+
+  // Handle payment refund when task is canceled
+  async handleTaskCancellation(taskId) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get both payment records for this task
+      const paymentsQuery = `
+        SELECT p.*, u.wallet_amount, u.id as user_id
+        FROM payments p
+        JOIN users u ON p.user_id = u.id
+        WHERE p.task_request_id = $1
+        AND p.status NOT IN ('refunded', 'canceled')
+      `;
+      const paymentsResult = await client.query(paymentsQuery, [taskId]);
+      
+      console.log('Found payments for task:', taskId, paymentsResult.rows);
+
+      if (paymentsResult.rows.length === 0) {
+        console.log('No active payments found for task:', taskId);
+        return { success: true, message: 'No active payments to refund' };
+      }
+
+      // Find sender's payment (is_payment = true) and tasker's payment (is_payment = false)
+      const senderPayment = paymentsResult.rows.find(p => p.is_payment === true);
+      const taskerPayment = paymentsResult.rows.find(p => p.is_payment === false);
+
+      if (!senderPayment) {
+        console.log('No sender payment found for task:', taskId);
+        return { success: true, message: 'No sender payment to refund' };
+      }
+
+      console.log('Processing refund for task:', taskId);
+      console.log('Sender payment:', senderPayment);
+      console.log('Tasker payment:', taskerPayment);
+
+      // Convert amount to cents for wallet operations
+      const refundAmountInCents = Math.round(Math.abs(senderPayment.amount) * 100);
+
+      // Update sender's wallet with refund
+      const updateWalletQuery = `
+        UPDATE users 
+        SET wallet_amount = COALESCE(wallet_amount, 0) + $1 
+        WHERE id = $2
+        RETURNING wallet_amount
+      `;
+      const walletResult = await client.query(updateWalletQuery, [refundAmountInCents, senderPayment.user_id]);
+      console.log('Updated sender wallet. New amount:', walletResult.rows[0].wallet_amount);
+
+      // Update payment statuses
+      const updateSenderPaymentQuery = `
+        UPDATE payments 
+        SET status = 'refunded'
+        WHERE id = $1
+        RETURNING id, status
+      `;
+      const senderUpdateResult = await client.query(updateSenderPaymentQuery, [senderPayment.id]);
+      console.log('Updated sender payment status:', senderUpdateResult.rows[0]);
+
+      if (taskerPayment) {
+        const updateTaskerPaymentQuery = `
+          UPDATE payments 
+          SET status = 'canceled'
+          WHERE id = $1
+          RETURNING id, status
+        `;
+        const taskerUpdateResult = await client.query(updateTaskerPaymentQuery, [taskerPayment.id]);
+        console.log('Updated tasker payment status:', taskerUpdateResult.rows[0]);
+      }
+
+      await client.query('COMMIT');
+      return { success: true, message: 'Payment refunded successfully' };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error handling task cancellation:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 

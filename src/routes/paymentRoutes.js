@@ -5,21 +5,16 @@ const {
   createCheckoutSession, handleWebhook, handleSuccess, handleCancel,
 } = require('../controllers/paymentController');
 
-// Protected routes
+// Public routes that don't require authentication
+// These are called by Stripe and need to be before the authenticateToken middleware
+router.post('/webhook', handleWebhook);
+router.get('/success', handleSuccess);
+router.get('/cancel', handleCancel);
+
+// Protected routes that require authentication
 router.use(authenticateToken);
 
 // Create checkout session (requires authentication)
 router.post('/create-checkout-session', createCheckoutSession);
-
-// Success and cancel redirect endpoints (no auth required as they're called by Stripe)
-router.get('/success', handleSuccess);
-router.get('/cancel', handleCancel);
-
-// Webhook endpoint (no auth required as it's called by Stripe)
-router.post(
-  '/webhook',
-  express.raw({ type: 'application/json' }),
-  handleWebhook,
-);
 
 module.exports = router;
