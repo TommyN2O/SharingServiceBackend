@@ -860,37 +860,29 @@ const taskerController = {
           SELECT 
             (SELECT COUNT(*) FROM task_requests) as total_requests,
             (SELECT COUNT(*) FROM task_requests WHERE sender_id = $1) as user_requests,
+            (SELECT COUNT(*) FROM open_tasks WHERE creator_id = $1) as user_open_tasks,
             (SELECT COUNT(*) FROM users WHERE id = $1) as user_exists
         `, [sender_id]);
 
         console.log('Database status:', {
           totalRequests: tableChecks.rows[0].total_requests,
           userRequests: tableChecks.rows[0].user_requests,
+          userOpenTasks: tableChecks.rows[0].user_open_tasks,
           userExists: tableChecks.rows[0].user_exists,
         });
 
-        // Get all tasks with related data
         const query = `
+          -- Task Requests
           SELECT 
+            'task_request' as task_type,
             tr.id,
             tr.description,
             tr.duration,
             tr.status,
             tr.created_at,
+            NULL::decimal as budget,
             c.id as city_id,
             c.name as city_name,
-            -- Sender details
-            s.id as sender_id,
-            s.name as sender_name,
-            s.surname as sender_surname,
-            COALESCE(s.profile_photo, '') as sender_profile_photo,
-            -- Tasker details
-            t.id as tasker_id,
-            t.name as tasker_name,
-            t.surname as tasker_surname,
-            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
-            tp.description as tasker_description,
-            tp.hourly_rate as tasker_hourly_rate,
             -- Categories as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -912,11 +904,35 @@ const taskerController = {
               FROM task_request_availability tra
               WHERE tra.task_request_id = tr.id
             ) as availability,
-            -- Gallery as JSON array
-            (
-              SELECT json_agg(trg.image_url)
-              FROM task_request_gallery trg
-              WHERE trg.task_request_id = tr.id
+            -- Sender details
+            s.id as sender_id,
+            s.name as sender_name,
+            s.surname as sender_surname,
+            COALESCE(s.profile_photo, '') as sender_profile_photo,
+            -- Tasker details
+            t.id as tasker_id,
+            t.name as tasker_name,
+            t.surname as tasker_surname,
+            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
+            tp.description as tasker_description,
+            CASE 
+              WHEN tr.status = 'Waiting for Payment' THEN tr.hourly_rate
+              ELSE tp.hourly_rate
+            END as tasker_hourly_rate,
+            -- Gallery as JSON array with relative paths and forward slashes
+            COALESCE(
+              (
+                SELECT json_agg(
+                  CASE 
+                    WHEN trg.image_url LIKE 'C:%' OR trg.image_url LIKE '/C:%' 
+                    THEN replace(regexp_replace(trg.image_url, '^.*?public[/\\\\]', ''), '\\', '/')
+                    ELSE replace(trg.image_url, '\\', '/')
+                  END
+                )
+                FROM task_request_gallery trg
+                WHERE trg.task_request_id = tr.id
+              ),
+              '[]'::json
             ) as gallery
           FROM task_requests tr
           JOIN cities c ON tr.city_id = c.id
@@ -924,14 +940,80 @@ const taskerController = {
           JOIN users t ON tr.tasker_id = t.id
           LEFT JOIN tasker_profiles tp ON t.id = tp.user_id
           WHERE tr.sender_id = $1
-          ORDER BY tr.created_at DESC
+
+          UNION ALL
+
+          -- Open Tasks
+          SELECT 
+            'open_task' as task_type,
+            ot.id,
+            ot.description,
+            ot.duration,
+            ot.status,
+            ot.created_at,
+            ot.budget,
+            c.id as city_id,
+            c.name as city_name,
+            -- Categories
+            json_build_array(
+              json_build_object(
+                'id', cat.id,
+                'name', cat.name,
+                'description', cat.description,
+                'image_url', cat.image_url
+              )
+            ) as categories,
+            -- Availability
+            (
+              SELECT json_agg(json_build_object(
+                'date', to_char(otd.date, 'YYYY-MM-DD'),
+                'time', to_char(otd.time, 'HH24:MI:SS')
+              ))
+              FROM open_task_dates otd
+              WHERE otd.task_id = ot.id
+            ) as availability,
+            -- Sender (creator) details
+            s.id as sender_id,
+            s.name as sender_name,
+            s.surname as sender_surname,
+            COALESCE(s.profile_photo, '') as sender_profile_photo,
+            -- Tasker details (null for open tasks)
+            NULL as tasker_id,
+            NULL as tasker_name,
+            NULL as tasker_surname,
+            NULL as tasker_profile_photo,
+            NULL as tasker_description,
+            NULL::decimal as tasker_hourly_rate,
+            -- Gallery
+            COALESCE(
+              (
+                SELECT json_agg(
+                  CASE 
+                    WHEN otp.photo_url LIKE 'C:%' OR otp.photo_url LIKE '/C:%' 
+                    THEN replace(regexp_replace(otp.photo_url, '^.*?public[/\\\\]', ''), '\\', '/')
+                    ELSE replace(otp.photo_url, '\\', '/')
+                  END
+                )
+                FROM open_task_photos otp
+                WHERE otp.task_id = ot.id
+              ),
+              '[]'::json
+            ) as gallery
+          FROM open_tasks ot
+          JOIN cities c ON ot.location_id = c.id
+          JOIN categories cat ON ot.category_id = cat.id
+          JOIN users s ON ot.creator_id = s.id
+          WHERE ot.creator_id = $1
+
+          ORDER BY created_at DESC
         `;
 
         const result = await client.query(query, [sender_id]);
-        console.log(`Found ${result.rows.length} tasks for user ${sender_id}`);
+        console.log(`Found ${result.rows.length} total tasks for user ${sender_id}`);
 
         // Format the response
         const tasks = result.rows.map((row) => ({
+          task_type: row.task_type,
           id: row.id,
           description: row.description,
           city: {
@@ -947,17 +1029,18 @@ const taskerController = {
             surname: row.sender_surname,
             profile_photo: row.sender_profile_photo,
           },
-          tasker: {
+          tasker: row.tasker_id ? {
             id: row.tasker_id,
             name: row.tasker_name,
             surname: row.tasker_surname,
             profile_photo: row.tasker_profile_photo,
             description: row.tasker_description,
             hourly_rate: row.tasker_hourly_rate,
-          },
+          } : null,
           gallery: row.gallery || [],
           status: row.status,
           created_at: row.created_at,
+          budget: row.budget
         }));
 
         // Debug: Log sample task if available
@@ -1023,7 +1106,10 @@ const taskerController = {
             t.surname as tasker_surname,
             COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
-            tp.hourly_rate as tasker_hourly_rate,
+            CASE 
+              WHEN tr.status = 'Waiting for Payment' THEN tr.hourly_rate
+              ELSE tp.hourly_rate
+            END as tasker_hourly_rate,
             -- Categories as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -1143,7 +1229,10 @@ const taskerController = {
             t.surname as tasker_surname,
             COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
-            tp.hourly_rate as tasker_hourly_rate,
+            CASE 
+              WHEN tr.status = 'Waiting for Payment' THEN tr.hourly_rate
+              ELSE tp.hourly_rate
+            END as tasker_hourly_rate,
             -- Categories as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -1334,7 +1423,10 @@ const taskerController = {
             t.surname as tasker_surname,
             COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
-            tp.hourly_rate as tasker_hourly_rate,
+            CASE 
+              WHEN tr.status = 'Waiting for Payment' THEN tr.hourly_rate
+              ELSE tp.hourly_rate
+            END as tasker_hourly_rate,
             -- Availability as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -1422,9 +1514,10 @@ const taskerController = {
 
       const client = await pool.connect();
       try {
-        // Get task with related data
-        const query = `
+        // First try to get task from task_requests
+        const taskRequestQuery = `
           SELECT 
+            'task_request' as task_type,
             tr.id,
             tr.description,
             tr.duration,
@@ -1432,18 +1525,6 @@ const taskerController = {
             tr.created_at,
             c.id as city_id,
             c.name as city_name,
-            -- Sender details
-            s.id as sender_id,
-            s.name as sender_name,
-            s.surname as sender_surname,
-            COALESCE(s.profile_photo, '') as sender_profile_photo,
-            -- Tasker details
-            t.id as tasker_id,
-            t.name as tasker_name,
-            t.surname as tasker_surname,
-            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
-            tp.description as tasker_description,
-            tp.hourly_rate as tasker_hourly_rate,
             -- Categories as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -1465,11 +1546,35 @@ const taskerController = {
               FROM task_request_availability tra
               WHERE tra.task_request_id = tr.id
             ) as availability,
-            -- Gallery as JSON array
-            (
-              SELECT json_agg(trg.image_url)
-              FROM task_request_gallery trg
-              WHERE trg.task_request_id = tr.id
+            -- Sender details
+            s.id as sender_id,
+            s.name as sender_name,
+            s.surname as sender_surname,
+            COALESCE(s.profile_photo, '') as sender_profile_photo,
+            -- Tasker details
+            t.id as tasker_id,
+            t.name as tasker_name,
+            t.surname as tasker_surname,
+            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
+            tp.description as tasker_description,
+            CASE 
+              WHEN tr.status = 'Waiting for Payment' THEN tr.hourly_rate
+              ELSE tp.hourly_rate
+            END as tasker_hourly_rate,
+            -- Gallery as JSON array with relative paths and forward slashes
+            COALESCE(
+              (
+                SELECT json_agg(
+                  CASE 
+                    WHEN trg.image_url LIKE 'C:%' OR trg.image_url LIKE '/C:%' 
+                    THEN replace(regexp_replace(trg.image_url, '^.*?public[/\\\\]', ''), '\\', '/')
+                    ELSE replace(trg.image_url, '\\', '/')
+                  END
+                )
+                FROM task_request_gallery trg
+                WHERE trg.task_request_id = tr.id
+              ),
+              '[]'::json
             ) as gallery
           FROM task_requests tr
           JOIN cities c ON tr.city_id = c.id
@@ -1479,17 +1584,108 @@ const taskerController = {
           WHERE tr.sender_id = $1 AND tr.id = $2
         `;
 
-        const result = await client.query(query, [sender_id, task_id]);
+        const taskRequestResult = await client.query(taskRequestQuery, [sender_id, task_id]);
 
-        if (result.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Task not found or you do not have permission to view it',
-          });
+        // If not found in task_requests, try open_tasks
+        if (taskRequestResult.rows.length === 0) {
+          const openTaskQuery = `
+            SELECT 
+              'open_task' as task_type,
+              ot.id,
+              ot.description,
+              ot.duration,
+              ot.status,
+              ot.created_at,
+              ot.budget,
+              c.id as city_id,
+              c.name as city_name,
+              -- Categories
+              json_build_array(
+                json_build_object(
+                  'id', cat.id,
+                  'name', cat.name,
+                  'description', cat.description,
+                  'image_url', cat.image_url
+                )
+              ) as categories,
+              -- Availability
+              (
+                SELECT json_agg(json_build_object(
+                  'date', to_char(otd.date, 'YYYY-MM-DD'),
+                  'time', to_char(otd.time, 'HH24:MI:SS')
+                ))
+                FROM open_task_dates otd
+                WHERE otd.task_id = ot.id
+              ) as availability,
+              -- Sender (creator) details
+              s.id as sender_id,
+              s.name as sender_name,
+              s.surname as sender_surname,
+              COALESCE(s.profile_photo, '') as sender_profile_photo,
+              -- Gallery with relative paths and forward slashes
+              COALESCE(
+                (
+                  SELECT json_agg(
+                    CASE 
+                      WHEN otp.photo_url LIKE 'C:%' OR otp.photo_url LIKE '/C:%' 
+                      THEN replace(regexp_replace(otp.photo_url, '^.*?public[/\\\\]', ''), '\\', '/')
+                      ELSE replace(otp.photo_url, '\\', '/')
+                    END
+                  )
+                  FROM open_task_photos otp
+                  WHERE otp.task_id = ot.id
+                ),
+                '[]'::json
+              ) as gallery
+            FROM open_tasks ot
+            JOIN cities c ON ot.location_id = c.id
+            JOIN categories cat ON ot.category_id = cat.id
+            JOIN users s ON ot.creator_id = s.id
+            WHERE ot.creator_id = $1 AND ot.id = $2
+          `;
+
+          const openTaskResult = await client.query(openTaskQuery, [sender_id, task_id]);
+
+          if (openTaskResult.rows.length === 0) {
+            return res.status(404).json({
+              error: 'Task not found or you do not have permission to view it',
+            });
+          }
+
+          // Format open task response
+          const row = openTaskResult.rows[0];
+          const task = {
+            task_type: row.task_type,
+            id: row.id,
+            description: row.description,
+            city: {
+              id: row.city_id,
+              name: row.city_name,
+            },
+            categories: row.categories || [],
+            duration: row.duration,
+            availability: row.availability || [],
+            sender: {
+              id: row.sender_id,
+              name: row.sender_name,
+              surname: row.sender_surname,
+              profile_photo: row.sender_profile_photo,
+            },
+            tasker: null,
+            gallery: row.gallery || [],
+            status: row.status,
+            created_at: row.created_at,
+            budget: row.budget
+          };
+
+          console.log('Found open task:', JSON.stringify(task, null, 2));
+          return res.json(task);
         }
 
-        // Format the response
-        const row = result.rows[0];
+        // Format task request response
+        const row = taskRequestResult.rows[0];
         const task = {
+          task_type: row.task_type,
           id: row.id,
           description: row.description,
           city: {
@@ -1518,7 +1714,7 @@ const taskerController = {
           created_at: row.created_at,
         };
 
-        console.log('Found task:', JSON.stringify(task, null, 2));
+        console.log('Found task request:', JSON.stringify(task, null, 2));
         res.json(task);
       } finally {
         client.release();
@@ -2093,6 +2289,36 @@ const taskerController = {
       });
     } finally {
       client.release();
+    }
+  },
+
+  // Check if user is a tasker
+  async checkIfTasker(req, res) {
+    try {
+      const userId = req.user.id;
+      
+      const query = `
+        SELECT is_tasker 
+        FROM users 
+        WHERE id = $1
+      `;
+      
+      const result = await pool.query(query, [userId]);
+      
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      res.json({ 
+        is_tasker: result.rows[0].is_tasker 
+      });
+      
+    } catch (error) {
+      console.error('Error checking if user is tasker:', error);
+      res.status(500).json({ 
+        error: 'Failed to check tasker status',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined 
+      });
     }
   },
 };

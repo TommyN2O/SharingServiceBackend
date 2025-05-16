@@ -1,11 +1,10 @@
 const express = require('express');
-
 const router = express.Router();
 const reviewController = require('../controllers/reviewController');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
-// All routes require authentication
-router.use(auth);
+// Protected routes
+router.use(authenticateToken);
 
 // Get reviews
 router.get('/tasker/:taskerId', reviewController.getTaskerReviews);

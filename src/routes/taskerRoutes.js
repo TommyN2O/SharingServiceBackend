@@ -1,7 +1,6 @@
 const express = require('express');
-
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const {
   getProfile,
   createProfile,
@@ -28,10 +27,11 @@ const {
   getSentCompletedTasks,
   getReceivedCompletedTasks,
   getWalletPayments,
+  checkIfTasker,
 } = require('../controllers/taskerController');
 
 // Apply authentication middleware to all routes
-router.use(auth);
+router.use(authenticateToken);
 
 // Profile routes
 router.get('/profile', getProfile);
@@ -74,5 +74,8 @@ router.put('/availability', updateAvailability);
 
 // Test endpoints
 router.post('/test/data', insertTestData);
+
+// Check if user is a tasker
+router.get('/check', checkIfTasker);
 
 module.exports = router;

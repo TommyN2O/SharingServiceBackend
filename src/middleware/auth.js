@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-const auth = async (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.header('Authorization');
     console.log('Auth header:', authHeader);
@@ -55,4 +55,14 @@ const auth = async (req, res, next) => {
   }
 };
 
-module.exports = auth;
+const isTasker = (req, res, next) => {
+  if (!req.user || !req.user.isTasker) {
+    return res.status(403).json({ error: 'Access denied. Only taskers can perform this action.' });
+  }
+  next();
+};
+
+module.exports = {
+  authenticateToken,
+  isTasker
+};

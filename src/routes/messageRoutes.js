@@ -1,7 +1,6 @@
 const express = require('express');
-
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const {
   getConversations,
   getMessages,
@@ -12,8 +11,8 @@ const {
   getUserChats,
 } = require('../controllers/messageController');
 
-// Apply authentication middleware to all routes
-router.use(auth);
+// Protected routes
+router.use(authenticateToken);
 
 // Get all user's chats
 router.get('/chats', getUserChats);

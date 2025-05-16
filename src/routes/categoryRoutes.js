@@ -1,7 +1,7 @@
 const express = require('express');
 
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const categoryController = require('../controllers/categoryController');
 
 // Public routes
@@ -10,7 +10,7 @@ router.get('/:id', categoryController.getCategoryById);
 router.post('/', categoryController.createCategory);
 
 // Protected routes (admin only)
-router.use(auth);
+router.use(authenticateToken);
 router.put('/:id', categoryController.updateCategory);
 router.delete('/:id', categoryController.deleteCategory);
 

@@ -2,7 +2,7 @@ const express = require('express');
 
 const router = express.Router();
 const userController = require('../controllers/userController');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const { uploadFields } = require('../controllers/taskerController');
 
 // Public routes (no auth required)
@@ -12,7 +12,7 @@ router.get('/count', userController.getUserCount);
 router.get('/all', userController.getAllUsers);
 
 // Protected routes (auth required)
-router.use(auth);
+router.use(authenticateToken);
 
 // Profile routes
 router.get('/profile', userController.getProfile);

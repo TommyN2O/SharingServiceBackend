@@ -22,7 +22,8 @@ class TaskRequest extends BaseModel {
 
   async createTaskRequestsTable() {
     try {
-      const query = `
+      // First create the table if it doesn't exist
+      const createTableQuery = `
         CREATE TABLE IF NOT EXISTS task_requests (
           id SERIAL PRIMARY KEY,
           description TEXT NOT NULL,
@@ -30,11 +31,31 @@ class TaskRequest extends BaseModel {
           duration INTEGER NOT NULL,
           sender_id INTEGER REFERENCES users(id),
           tasker_id INTEGER REFERENCES users(id),
+          hourly_rate DECIMAL(10,2) NOT NULL,
           status VARCHAR(50) DEFAULT 'pending',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `;
-      await pool.query(query);
+      await pool.query(createTableQuery);
+
+      // Check if hourly_rate column exists
+      const checkColumnQuery = `
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'task_requests' 
+        AND column_name = 'hourly_rate'
+      `;
+      const result = await pool.query(checkColumnQuery);
+
+      // Add hourly_rate column if it doesn't exist
+      if (result.rows.length === 0) {
+        const alterTableQuery = `
+          ALTER TABLE task_requests 
+          ADD COLUMN hourly_rate DECIMAL(10,2) NOT NULL DEFAULT 0
+        `;
+        await pool.query(alterTableQuery);
+        console.log('Added hourly_rate column to task_requests table');
+      }
     } catch (error) {
       console.error('Error creating task requests table:', error);
       throw error;

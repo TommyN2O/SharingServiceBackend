@@ -2,10 +2,10 @@ const express = require('express');
 
 const router = express.Router();
 const supportTicketController = require('../controllers/supportTicketController');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
-// All routes require authentication
-router.use(auth);
+// Protected routes
+router.use(authenticateToken);
 
 // Create a new support ticket
 router.post('/', supportTicketController.createTicket);

@@ -14,6 +14,7 @@ const messageRoutes = require('./routes/messageRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const userRoutes = require('./routes/userRoutes');
 const supportTicketRoutes = require('./routes/supportTicketRoutes');
+const openTaskRoutes = require('./routes/openTaskRoutes');
 
 const app = express();
 
@@ -218,6 +219,7 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/taskers', taskerRoutes);
 app.use('/api/support-tickets', supportTicketRoutes);
+app.use('/api/open-tasks', openTaskRoutes);
 
 // Special handling for Stripe webhook route
 app.use('/api/payment/webhook', express.raw({ type: 'application/json' }));

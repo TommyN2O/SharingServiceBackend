@@ -1,13 +1,15 @@
 const express = require('express');
-
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const {
   createCheckoutSession, handleWebhook, handleSuccess, handleCancel,
 } = require('../controllers/paymentController');
 
+// Protected routes
+router.use(authenticateToken);
+
 // Create checkout session (requires authentication)
-router.post('/create-checkout-session', auth, createCheckoutSession);
+router.post('/create-checkout-session', createCheckoutSession);
 
 // Success and cancel redirect endpoints (no auth required as they're called by Stripe)
 router.get('/success', handleSuccess);
