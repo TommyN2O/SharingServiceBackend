@@ -1446,13 +1446,22 @@ const taskerController = {
 
         // Get current task status and check if it's from an open task
         const currentStatusQuery = `
-          SELECT tr.status, tr.is_open_task, tr.open_task_id, tr.description, tr.city_id, tr.duration,
-                 (SELECT array_agg(trc.category_id) FROM task_request_categories trc WHERE trc.task_request_id = tr.id) as category_ids,
-                 (SELECT array_agg(trg.image_url) FROM task_request_gallery trg WHERE trg.task_request_id = tr.id) as gallery_images,
-                 (SELECT array_agg(json_build_object('date', tra.date, 'time', tra.time_slot))
-                  FROM task_request_availability tra 
-                  WHERE tra.task_request_id = tr.id) as availability
+          SELECT 
+            tr.status, 
+            tr.is_open_task, 
+            tr.open_task_id, 
+            tr.description, 
+            tr.city_id, 
+            tr.duration,
+            tp.hourly_rate as tasker_hourly_rate,
+            (SELECT array_agg(trc.category_id) FROM task_request_categories trc WHERE trc.task_request_id = tr.id) as category_ids,
+            (SELECT array_agg(trg.image_url) FROM task_request_gallery trg WHERE trg.task_request_id = tr.id) as gallery_images,
+            (SELECT array_agg(json_build_object('date', tra.date, 'time', tra.time_slot))
+             FROM task_request_availability tra 
+             WHERE tra.task_request_id = tr.id) as availability
           FROM task_requests tr
+          JOIN users u ON tr.tasker_id = u.id
+          JOIN tasker_profiles tp ON u.id = tp.user_id
           WHERE tr.id = $1`;
         const currentStatusResult = await client.query(currentStatusQuery, [id]);
         
@@ -1464,11 +1473,49 @@ const taskerController = {
         const currentStatus = taskRequest.status;
         console.log('Current status:', currentStatus, 'New status:', status);
 
-        // If task is being canceled and was previously paid, handle payment refund
-        if (status === 'Canceled' && currentStatus === 'paid') {
+        // Convert 'Accepted' status to 'Waiting for Payment'
+        const finalStatus = status === 'Accepted' ? 'Waiting for Payment' : status;
+
+        // Special handling for canceling a paid open task
+        if (finalStatus === 'Canceled' && currentStatus === 'paid' && taskRequest.is_open_task && taskRequest.open_task_id) {
           try {
+            // Store the open_task_id before we remove it
+            const openTaskId = taskRequest.open_task_id;
+
+            // Process the refund
             const refundResult = await Payment.handleTaskCancellation(id);
             console.log('Payment refund result:', refundResult);
+
+            // Update open task status back to 'open' FIRST
+            const updateOpenTaskQuery = `
+              UPDATE open_tasks 
+              SET status = 'open'::varchar
+              WHERE id = $1
+              RETURNING *
+            `;
+            const openTaskResult = await client.query(updateOpenTaskQuery, [openTaskId]);
+
+            if (!openTaskResult.rows.length) {
+              throw new Error('Failed to update open task status');
+            }
+
+            // Then update task request
+            const updateTaskRequestQuery = `
+              UPDATE task_requests 
+              SET status = 'refunded'::varchar,
+                  is_open_task = false,
+                  open_task_id = null
+              WHERE id = $1
+              RETURNING *
+            `;
+            const taskRequestResult = await client.query(updateTaskRequestQuery, [id]);
+
+            await client.query('COMMIT');
+            return res.json({ 
+              message: 'Task request canceled and refunded',
+              task_request: taskRequestResult.rows[0],
+              open_task: openTaskResult.rows[0]
+            });
           } catch (error) {
             console.error('Error handling payment refund:', error);
             await client.query('ROLLBACK');
@@ -1476,29 +1523,47 @@ const taskerController = {
           }
         }
 
-        // If task is being canceled and it's from an open task, convert it back
-        if (status === 'Canceled' && taskRequest.is_open_task && taskRequest.open_task_id) {
-          // Update open task status back to 'open'
-          await client.query(
-            `UPDATE open_tasks 
-             SET status = 'open' 
-             WHERE id = $1`,
-            [taskRequest.open_task_id]
-          );
-
-          // Delete the task request (this will keep the payment records due to ON DELETE CASCADE)
-          await client.query('DELETE FROM task_requests WHERE id = $1', [id]);
-
-          await client.query('COMMIT');
-          return res.json({ 
-            message: 'Task request canceled and converted back to open task',
-            open_task_id: taskRequest.open_task_id 
-          });
+        // If task is being canceled and was previously paid, handle payment refund
+        if (finalStatus === 'Canceled' && currentStatus === 'paid' && !taskRequest.is_open_task) {
+          try {
+            const refundResult = await Payment.handleTaskCancellation(id);
+            console.log('Payment refund result:', refundResult);
+            
+            // Update task request to refunded status
+            const updateQuery = `
+              UPDATE task_requests 
+              SET status = 'refunded'::varchar
+              WHERE id = $1
+              RETURNING *
+            `;
+            const result = await client.query(updateQuery, [id]);
+            
+            await client.query('COMMIT');
+            return res.json(result.rows[0]);
+          } catch (error) {
+            console.error('Error handling payment refund:', error);
+            await client.query('ROLLBACK');
+            return res.status(500).json({ error: 'Failed to process payment refund' });
+          }
         }
 
-        // Regular status update for non-open tasks
-        const updateQuery = 'UPDATE task_requests SET status = $1 WHERE id = $2 RETURNING *';
-        const result = await client.query(updateQuery, [status, id]);
+        // Regular status update for non-open tasks or non-cancel operations
+        const updateQuery = `
+          UPDATE task_requests 
+          SET status = $1::varchar,
+              hourly_rate = CASE 
+                WHEN $1::varchar = 'Waiting for Payment' AND status = 'pending' 
+                THEN $2
+                ELSE hourly_rate
+              END
+          WHERE id = $3 
+          RETURNING *
+        `;
+        const result = await client.query(updateQuery, [
+          finalStatus, 
+          taskRequest.tasker_hourly_rate,
+          id
+        ]);
 
         await client.query('COMMIT');
         res.json(result.rows[0]);

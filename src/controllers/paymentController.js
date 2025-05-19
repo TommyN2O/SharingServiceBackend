@@ -74,35 +74,25 @@ const paymentController = {
           );
 
           // Create a unique session ID for wallet payment
-          const sessionIdSender = `wallet_payment_sender_${req.user.id}_${task_id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          const sessionIdTasker = `wallet_payment_tasker_${req.user.id}_${task_id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const sessionId = `wallet_payment_${req.user.id}_${task_id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-          // Create payment record for sender (payment)
+          // Create payment records (this will create both sender and tasker records)
           await Payment.createPayment({
             task_request_id: task_id,
-            amount: amount * -1,
+            amount: amount,
             currency: 'EUR',
-            stripe_session_id: sessionIdSender,
+            stripe_session_id: sessionId,
             stripe_payment_intent_id: null,
             status: 'completed',
             user_id: req.user.id,
             is_payment: true,
           });
 
-          // Create payment record for tasker (earning)
-          await Payment.createPayment({
-            task_request_id: task_id,
-            amount,
-            currency: 'EUR',
-            stripe_session_id: sessionIdTasker,
-            stripe_payment_intent_id: null,
-            status: 'completed',
-            user_id: taskRequest.tasker_id,
-            is_payment: false,
-          });
-
           // Update task status to paid
-          await TaskRequest.updateStatus(task_id, 'paid');
+          await client.query(
+            'UPDATE task_requests SET status = $1 WHERE id = $2',
+            ['paid', task_id]
+          );
 
           await client.query('COMMIT');
 
