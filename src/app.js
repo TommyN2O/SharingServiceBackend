@@ -15,6 +15,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const userRoutes = require('./routes/userRoutes');
 const supportTicketRoutes = require('./routes/supportTicketRoutes');
 const openTaskRoutes = require('./routes/openTaskRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 
 const app = express();
 
@@ -221,6 +222,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/taskers', taskerRoutes);
 app.use('/api/support-tickets', supportTicketRoutes);
 app.use('/api/open-tasks', openTaskRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Regular JSON parsing for all other routes
 app.use(express.json());

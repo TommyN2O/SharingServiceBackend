@@ -7,7 +7,7 @@ async function runMigration() {
   try {
     // Read the migration SQL
     const migrationSQL = fs.readFileSync(
-      path.join(__dirname, 'add_updated_at_to_tasker_profiles.sql'),
+      path.join(__dirname, 'update_reviews_table.sql'),
       'utf8',
     );
 
@@ -20,10 +20,14 @@ async function runMigration() {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error running migration:', error);
+    throw error;
   } finally {
     client.release();
     await pool.end();
   }
 }
 
-runMigration();
+runMigration().catch(error => {
+  console.error('Migration failed:', error);
+  process.exit(1);
+});

@@ -1,16 +1,17 @@
 const Review = require('../models/Review');
-const PlannedTask = require('../models/PlannedTask');
-const TaskerProfile = require('../models/TaskerProfile');
+const TaskRequest = require('../models/TaskRequest');
+const { validationResult } = require('express-validator');
 
 const reviewController = {
   // Get all reviews for a tasker
   async getTaskerReviews(req, res) {
     try {
       const { taskerId } = req.params;
-      const reviews = await Review.findByTaskerId(taskerId);
+      const reviews = await Review.findByRevieweeId(taskerId);
       res.json(reviews);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      console.error('Error fetching tasker reviews:', error);
+      res.status(500).json({ message: 'Error fetching reviews' });
     }
   },
 
@@ -30,39 +31,50 @@ const reviewController = {
   // Create new review
   async createReview(req, res) {
     try {
-      const { taskId, rating, comment } = req.body;
-
-      // Check if task exists and is completed
-      const task = await PlannedTask.findById(taskId);
-      if (!task) {
-        return res.status(404).json({ error: 'Task not found' });
-      }
-      if (task.status !== 'completed') {
-        return res.status(400).json({ error: 'Can only review completed tasks' });
+      // Validate request
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
       }
 
-      // Check if user is the customer who requested the task
-      if (task.customer_id !== req.user.id) {
-        return res.status(403).json({ error: 'Only the customer can review the task' });
+      const { task_request_id, rating, review } = req.body;
+      const reviewer_id = req.user.id; // Get from authenticated user
+
+      // Verify task request exists and is completed
+      const taskRequest = await TaskRequest.findById(task_request_id);
+      if (!taskRequest) {
+        return res.status(404).json({ message: 'Task request not found' });
       }
 
-      // Create review
-      const review = await Review.create({
-        task_id: taskId,
-        customer_id: req.user.id,
-        tasker_id: task.tasker_id,
+      if (String(taskRequest.status).toLowerCase() !== 'completed') {
+        return res.status(400).json({ message: 'Can only review completed tasks' });
+      }
+
+      // Verify the reviewer is the task requester
+      if (taskRequest.sender_id !== reviewer_id) {
+        return res.status(403).json({ message: 'Only the task requester can leave a review' });
+      }
+
+      // Check if review already exists
+      const existingReview = await Review.checkReviewExists(task_request_id);
+      if (existingReview) {
+        return res.status(400).json({ message: 'Review already exists for this task' });
+      }
+
+      // Create the review
+      const reviewData = {
+        task_request_id,
+        reviewer_id,
+        reviewee_id: taskRequest.tasker_id,
         rating,
-        comment,
-      });
+        review
+      };
 
-      // Update tasker's average rating
-      const taskerReviews = await Review.findByTaskerId(task.tasker_id);
-      const avgRating = taskerReviews.reduce((acc, rev) => acc + rev.rating, 0) / taskerReviews.length;
-      await TaskerProfile.update(task.tasker_id, { rating: avgRating });
-
-      res.status(201).json(review);
+      const newReview = await Review.createReview(reviewData);
+      res.status(201).json(newReview);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      console.error('Error creating review:', error);
+      res.status(500).json({ message: 'Error creating review' });
     }
   },
 
@@ -122,6 +134,47 @@ const reviewController = {
       res.status(400).json({ error: error.message });
     }
   },
+
+  // Get tasker's average rating
+  async getTaskerRating(req, res) {
+    try {
+      const { taskerId } = req.params;
+      const rating = await Review.getTaskerAverageRating(taskerId);
+      res.json(rating);
+    } catch (error) {
+      console.error('Error fetching tasker rating:', error);
+      res.status(500).json({ message: 'Error fetching rating' });
+    }
+  },
+
+  // Get task review
+  async getTaskReview(req, res) {
+    try {
+      const { taskRequestId } = req.params;
+      const review = await Review.findByTaskRequestId(taskRequestId);
+      
+      if (!review) {
+        return res.status(404).json({ message: 'Review not found' });
+      }
+      
+      res.json(review);
+    } catch (error) {
+      console.error('Error fetching task review:', error);
+      res.status(500).json({ message: 'Error fetching review' });
+    }
+  },
+
+  // Get review status for a task
+  async getReviewStatus(req, res) {
+    try {
+      const { taskRequestId } = req.params;
+      const status = await Review.getReviewStatus(taskRequestId);
+      res.json(status);
+    } catch (error) {
+      console.error('Error checking review status:', error);
+      res.status(500).json({ message: 'Error checking review status' });
+    }
+  }
 };
 
 module.exports = reviewController;

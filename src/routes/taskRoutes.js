@@ -1,21 +1,18 @@
 const express = require('express');
-
 const router = express.Router();
 const taskController = require('../controllers/taskController');
+const authMiddleware = require('../middleware/authMiddleware');
 
-// Customer request routes
-router.post('/requests', taskController.createRequest);
-router.get('/requests/:requestId', taskController.getRequestDetails);
+// Protected routes
+router.use(authMiddleware);
 
-// Offer management routes
-router.post('/offers/:offerId/accept', taskController.acceptOffer);
-router.post('/offers/:offerId/decline', taskController.declineOffer);
+// Create a new task
+router.post('/', taskController.createTask);
 
-// Task management routes
-router.post('/planned-tasks/:taskId/accept', taskController.acceptPlannedTask);
-router.get('/completed', taskController.getCompletedTasks);
+// Accept a task
+router.post('/:taskId/accept', taskController.acceptTask);
 
-// Review routes
-router.post('/tasks/:taskId/review', taskController.createReview);
+// Get task by ID
+router.get('/:taskId', taskController.getTaskById);
 
 module.exports = router;

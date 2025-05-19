@@ -264,8 +264,8 @@ class TaskerProfile extends BaseModel {
         ) as gallery
       FROM tasker_profiles tp
       JOIN users u ON tp.user_id = u.id
-      LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id
-      LEFT JOIN reviews r ON pt.id = r.planned_task_id
+      LEFT JOIN task_requests tr ON tp.user_id = tr.tasker_id
+      LEFT JOIN reviews r ON tr.id = r.task_request_id
       WHERE tp.user_id = $1
       GROUP BY tp.id, u.id
     `;
@@ -321,12 +321,12 @@ class TaskerProfile extends BaseModel {
   async getTopTaskers(limit = 10) {
     const query = `
       SELECT tp.*, u.name, u.surname, 
-             COUNT(DISTINCT pt.id) as completed_tasks,
+             COUNT(DISTINCT tr.id) as completed_tasks,
              AVG(r.rating) as average_rating
       FROM tasker_profiles tp
       JOIN users u ON tp.user_id = u.id
-      LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id AND pt.status = 'completed'
-      LEFT JOIN reviews r ON pt.id = r.planned_task_id
+      LEFT JOIN task_requests tr ON tp.user_id = tr.tasker_id AND tr.status = 'completed'
+      LEFT JOIN reviews r ON tr.id = r.task_request_id
       GROUP BY tp.id, u.name, u.surname
       ORDER BY average_rating DESC NULLS LAST, completed_tasks DESC
       LIMIT $1
@@ -338,12 +338,12 @@ class TaskerProfile extends BaseModel {
   async searchTaskers(category, location, minPrice, maxPrice) {
     const query = `
       SELECT tp.*, u.name, u.surname, 
-             COUNT(DISTINCT pt.id) as completed_tasks,
+             COUNT(DISTINCT tr.id) as completed_tasks,
              AVG(r.rating) as average_rating
       FROM tasker_profiles tp
       JOIN users u ON tp.user_id = u.id
-      LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id AND pt.status = 'completed'
-      LEFT JOIN reviews r ON pt.id = r.planned_task_id
+      LEFT JOIN task_requests tr ON tp.user_id = tr.tasker_id AND tr.status = 'completed'
+      LEFT JOIN reviews r ON tr.id = r.task_request_id
       WHERE ($1::text IS NULL OR tp.skills @> ARRAY[$1]::text[])
         AND ($2::text IS NULL OR tp.location ILIKE $2)
         AND ($3::numeric IS NULL OR tp.hourly_rate >= $3)
@@ -654,8 +654,8 @@ class TaskerProfile extends BaseModel {
           COUNT(DISTINCT r.id) as review_count
         FROM tasker_profiles tp
         LEFT JOIN users u ON tp.user_id = u.id
-        LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id
-        LEFT JOIN reviews r ON pt.id = r.planned_task_id
+        LEFT JOIN task_requests tr ON tp.user_id = tr.tasker_id
+        LEFT JOIN reviews r ON tr.id = r.task_request_id
         GROUP BY tp.id
       )
       SELECT DISTINCT
@@ -805,6 +805,18 @@ class TaskerProfile extends BaseModel {
   // Get tasker profile by profile ID
   async getProfileById(profileId) {
     const query = `
+      WITH tasker_ratings AS (
+        SELECT 
+          tp.id as tasker_id,
+          COALESCE(AVG(r.rating), 0) as avg_rating,
+          COUNT(DISTINCT r.id) as review_count
+        FROM tasker_profiles tp
+        LEFT JOIN users u ON tp.user_id = u.id
+        LEFT JOIN task_requests tr ON tp.user_id = tr.tasker_id
+        LEFT JOIN reviews r ON tr.id = r.task_request_id
+        WHERE tp.id = $1
+        GROUP BY tp.id
+      )
       SELECT 
         tp.id,
         CASE 
@@ -815,8 +827,8 @@ class TaskerProfile extends BaseModel {
         END as profile_photo,
         tp.description,
         tp.hourly_rate,
-        COALESCE(AVG(r.rating), 0) as rating,
-        COUNT(DISTINCT r.id) as review_count,
+        tr.avg_rating as rating,
+        tr.review_count,
         u.name,
         u.surname,
         u.email,
@@ -865,10 +877,8 @@ class TaskerProfile extends BaseModel {
         ) as gallery
       FROM tasker_profiles tp
       JOIN users u ON tp.user_id = u.id
-      LEFT JOIN planned_tasks pt ON tp.user_id = pt.tasker_id
-      LEFT JOIN reviews r ON pt.id = r.planned_task_id
+      JOIN tasker_ratings tr ON tr.tasker_id = tp.id
       WHERE tp.id = $1
-      GROUP BY tp.id, u.id, u.name, u.surname, u.email
     `;
 
     const result = await pool.query(query, [profileId]);

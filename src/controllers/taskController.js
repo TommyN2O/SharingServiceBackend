@@ -6,6 +6,7 @@ const pool = require('../config/database');
 const paymentController = require('./paymentController');
 const TaskerProfile = require('../models/TaskerProfile');
 const TaskRequest = require('../models/TaskRequest');
+const User = require('../models/User');
 
 const taskController = {
   // Create a new customer request
@@ -253,6 +254,95 @@ const taskController = {
     } catch (error) {
       console.error('Error updating task status:', error);
       res.status(500).json({ error: 'Failed to update task status' });
+    }
+  },
+
+  // Create a new task request
+  async createTask(req, res) {
+    try {
+      const {
+        description,
+        city_id,
+        duration,
+        tasker_id,
+        hourly_rate,
+      } = req.body;
+
+      // Validate required fields
+      if (!description || !city_id || !duration || !tasker_id || !hourly_rate) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      // Create task request
+      const taskRequest = await TaskRequest.create({
+        description,
+        city_id,
+        duration,
+        sender_id: req.user.id,
+        tasker_id,
+        hourly_rate,
+      });
+
+      // Send notification to tasker
+      await Message.create({
+        sender_id: req.user.id,
+        receiver_id: tasker_id,
+        content: 'You have received a new task request',
+        type: 'notification',
+      });
+
+      res.status(201).json(taskRequest);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  // Accept a task request
+  async acceptTask(req, res) {
+    try {
+      const { taskId } = req.params;
+
+      // Check if task exists
+      const task = await TaskRequest.findById(taskId);
+      if (!task) {
+        return res.status(404).json({ error: 'Task not found' });
+      }
+
+      // Check if user is the tasker
+      if (task.tasker_id !== req.user.id) {
+        return res.status(403).json({ error: 'Not authorized to accept this task' });
+      }
+
+      // Update task status
+      const updatedTask = await TaskRequest.updateStatus(taskId, 'accepted');
+
+      // Send notification to customer
+      await Message.create({
+        sender_id: req.user.id,
+        receiver_id: task.sender_id,
+        content: 'Your task request has been accepted',
+        type: 'notification',
+      });
+
+      res.json(updatedTask);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  // Get task by ID
+  async getTaskById(req, res) {
+    try {
+      const { taskId } = req.params;
+      const task = await TaskRequest.findById(taskId);
+
+      if (!task) {
+        return res.status(404).json({ error: 'Task not found' });
+      }
+
+      res.json(task);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
     }
   },
 };

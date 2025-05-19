@@ -3,11 +3,11 @@ const multer = require('multer');
 const fs = require('fs');
 const TaskerProfile = require('../models/TaskerProfile');
 const CustomerRequest = require('../models/CustomerRequest');
-const PlannedTask = require('../models/PlannedTask');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const pool = require('../config/database');
 const Payment = require('../models/Payment');
+const TaskRequest = require('../models/TaskRequest');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -423,7 +423,7 @@ const taskerController = {
         return res.status(403).json({ error: 'Tasker profile required to accept tasks' });
       }
 
-      const task = await PlannedTask.acceptTask(taskId, req.user.id);
+      const task = await TaskRequest.acceptTask(taskId, req.user.id);
 
       // Send notification to customer
       await Message.create({
@@ -443,7 +443,7 @@ const taskerController = {
   async getTasks(req, res) {
     try {
       const { status } = req.query;
-      const tasks = await PlannedTask.findByTaskerId(req.user.id, status);
+      const tasks = await TaskRequest.findByTaskerId(req.user.id, status);
       res.json(tasks);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -455,17 +455,7 @@ const taskerController = {
     try {
       const { taskId } = req.params;
       const { status } = req.body;
-
-      const task = await PlannedTask.updateStatus(taskId, status);
-
-      // Send notification to customer about status change
-      await Message.create({
-        sender_id: req.user.id,
-        receiver_id: task.customer_id,
-        content: `Task status updated to: ${status}`,
-        type: 'notification',
-      });
-
+      const task = await TaskRequest.updateStatus(taskId, status);
       res.json(task);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -1031,10 +1021,7 @@ const taskerController = {
             t.surname as tasker_surname,
             COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
-            CASE 
-              WHEN tr.status IN ('Accepted', 'paid', 'Completed') THEN tr.hourly_rate
-              ELSE tp.hourly_rate
-            END as tasker_hourly_rate,
+            tr.hourly_rate as tasker_hourly_rate,
             -- Gallery as JSON array with relative paths and forward slashes
             COALESCE(
             (
@@ -1457,15 +1444,24 @@ const taskerController = {
       try {
         await client.query('BEGIN');
 
-        // Get current task status
-        const currentStatusQuery = 'SELECT status FROM task_requests WHERE id = $1';
+        // Get current task status and check if it's from an open task
+        const currentStatusQuery = `
+          SELECT tr.status, tr.is_open_task, tr.open_task_id, tr.description, tr.city_id, tr.duration,
+                 (SELECT array_agg(trc.category_id) FROM task_request_categories trc WHERE trc.task_request_id = tr.id) as category_ids,
+                 (SELECT array_agg(trg.image_url) FROM task_request_gallery trg WHERE trg.task_request_id = tr.id) as gallery_images,
+                 (SELECT array_agg(json_build_object('date', tra.date, 'time', tra.time_slot))
+                  FROM task_request_availability tra 
+                  WHERE tra.task_request_id = tr.id) as availability
+          FROM task_requests tr
+          WHERE tr.id = $1`;
         const currentStatusResult = await client.query(currentStatusQuery, [id]);
         
         if (!currentStatusResult.rows.length) {
           return res.status(404).json({ error: 'Task request not found' });
         }
 
-        const currentStatus = currentStatusResult.rows[0].status;
+        const taskRequest = currentStatusResult.rows[0];
+        const currentStatus = taskRequest.status;
         console.log('Current status:', currentStatus, 'New status:', status);
 
         // If task is being canceled and was previously paid, handle payment refund
@@ -1480,7 +1476,27 @@ const taskerController = {
           }
         }
 
-        // Update task status
+        // If task is being canceled and it's from an open task, convert it back
+        if (status === 'Canceled' && taskRequest.is_open_task && taskRequest.open_task_id) {
+          // Update open task status back to 'open'
+          await client.query(
+            `UPDATE open_tasks 
+             SET status = 'open' 
+             WHERE id = $1`,
+            [taskRequest.open_task_id]
+          );
+
+          // Delete the task request (this will keep the payment records due to ON DELETE CASCADE)
+          await client.query('DELETE FROM task_requests WHERE id = $1', [id]);
+
+          await client.query('COMMIT');
+          return res.json({ 
+            message: 'Task request canceled and converted back to open task',
+            open_task_id: taskRequest.open_task_id 
+          });
+        }
+
+        // Regular status update for non-open tasks
         const updateQuery = 'UPDATE task_requests SET status = $1 WHERE id = $2 RETURNING *';
         const result = await client.query(updateQuery, [status, id]);
 
@@ -1554,10 +1570,7 @@ const taskerController = {
             t.surname as tasker_surname,
             COALESCE(tp.profile_photo, '') as tasker_profile_photo,
             tp.description as tasker_description,
-            CASE 
-              WHEN tr.status IN ('Accepted', 'paid', 'Completed') THEN tr.hourly_rate
-              ELSE tp.hourly_rate
-            END as tasker_hourly_rate,
+            tr.hourly_rate as tasker_hourly_rate,
             -- Gallery as JSON array with relative paths and forward slashes
             COALESCE(
             (

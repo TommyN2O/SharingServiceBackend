@@ -1,20 +1,22 @@
 const config = {
   // Base URL for the API
-  baseURL: process.env.API_BASE_URL || 'http://192.168.56.1:5000', // 10.0.2.2 is localhost for Android emulator
+  baseURL: process.env.API_BASE_URL || 'http://localhost:3000',
 
   // Authentication endpoints
   auth: {
     register: '/auth/register',
     login: '/auth/login',
+    refreshToken: '/auth/refresh-token',
   },
 
   // User endpoints
   user: {
-    profile: '/user/profile',
+    profile: '/users/profile',
+    updateProfile: '/users/profile',
     dashboard: '/user/dashboard',
     customerRequests: '/user/customer-requests',
     savedTaskers: '/user/saved-taskers',
-    messages: '/user/messages',
+    messages: '/messages/conversations',
   },
 
   // Tasker endpoints
