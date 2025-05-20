@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { JWT_SECRET } = require('../config/jwt');
 
 const authenticateToken = async (req, res, next) => {
   try {
@@ -22,12 +23,11 @@ const authenticateToken = async (req, res, next) => {
     }
 
     try {
-      // Use the fixed secret for verification
-      const decoded = jwt.verify(token, 'sharing_service_secret_key_2024');
+      const decoded = jwt.verify(token, JWT_SECRET);
       console.log('Decoded token:', decoded);
 
       // Get user to verify token matches stored token
-      const user = await User.getById(decoded.id);
+      const user = await User.getById(decoded.userId);
       console.log('User from DB:', user);
 
       if (!user || user.current_token !== token) {
@@ -35,9 +35,9 @@ const authenticateToken = async (req, res, next) => {
       }
 
       req.user = {
-        id: decoded.id,
-        email: decoded.email,
-        isTasker: decoded.isTasker || false,
+        id: decoded.userId,
+        email: user.email,
+        isTasker: user.is_tasker || false,
       };
       console.log('Set user in request:', req.user);
 

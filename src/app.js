@@ -16,6 +16,7 @@ const userRoutes = require('./routes/userRoutes');
 const supportTicketRoutes = require('./routes/supportTicketRoutes');
 const openTaskRoutes = require('./routes/openTaskRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
+const deviceRoutes = require('./routes/deviceRoutes');
 
 const app = express();
 
@@ -178,6 +179,19 @@ async function initializeDatabase() {
     `);
     console.log('Saved taskers table initialized successfully');
 
+    // Create user_devices table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_devices (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        device_token TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(device_token)
+      )
+    `);
+    console.log('User devices table initialized successfully');
+
     // Initialize category table
     await Category.createCategoryTable();
     console.log('Category table initialized successfully');
@@ -223,6 +237,7 @@ app.use('/api/taskers', taskerRoutes);
 app.use('/api/support-tickets', supportTicketRoutes);
 app.use('/api/open-tasks', openTaskRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/devices', deviceRoutes);
 
 // Regular JSON parsing for all other routes
 app.use(express.json());

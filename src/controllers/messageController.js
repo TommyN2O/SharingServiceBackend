@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const Message = require('../models/Message');
+const NotificationService = require('../services/notificationService');
 
 const messageController = {
   // Get all user's chats
@@ -429,6 +430,9 @@ const messageController = {
 
         const messageResult = await client.query(insertQuery, [chatId, senderId, receiverId, message]);
         const newMessage = messageResult.rows[0];
+
+        // Send notification to the receiver
+        await NotificationService.sendMessageNotification(senderId, receiverId, message);
 
         console.log('Message sent successfully:', newMessage);
         res.status(201).json(newMessage);

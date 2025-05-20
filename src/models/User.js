@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const BaseModel = require('./BaseModel');
 const pool = require('../config/database');
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/jwt');
 
 const { _JWT_SECRET, _JWT_EXPIRES_IN } = process.env;
 require('dotenv').config();
@@ -337,8 +338,8 @@ class User extends BaseModel {
   }
 
   // Verify password
-  async verifyPassword(password, password_hash) {
-    return bcrypt.compare(password, password_hash);
+  async verifyPassword(password, hashedPassword) {
+    return bcrypt.compare(password, hashedPassword);
   }
 
   // Get user credentials by ID
@@ -414,34 +415,30 @@ class User extends BaseModel {
 
   async createToken(userId) {
     try {
-      const user = await this.getById(userId);
-      const now = new Date();
+      const client = await pool.connect();
+      try {
+        // Create a new token using the consistent JWT secret
+        const token = jwt.sign(
+          { userId },
+          JWT_SECRET,
+          { expiresIn: JWT_EXPIRES_IN }
+        );
 
-      // Check if user exists
-      if (!user) {
-        throw new Error('User not found');
+        // Update the user's current token and token creation time
+        const updateQuery = `
+          UPDATE users 
+          SET current_token = $1, token_created_at = NOW() 
+          WHERE id = $2
+          RETURNING id, email, name, surname
+        `;
+        await client.query(updateQuery, [token, userId]);
+
+        return token;
+      } finally {
+        client.release();
       }
-
-      // Create new token with the fixed secret
-      const token = jwt.sign(
-        {
-          id: user.id,
-          email: user.email,
-          isTasker: user.is_tasker || false,
-        },
-        'sharing_service_secret_key_2024',
-        { expiresIn: '14d' },
-      );
-
-      // Update the token_created_at field and store the new token
-      const _updatedUser = await this.update(userId, {
-        token_created_at: now.toISOString(),
-        current_token: token,
-      });
-
-      return token;
     } catch (error) {
-      console.error('Error in createToken:', error);
+      console.error('Error creating token:', error);
       throw error;
     }
   }

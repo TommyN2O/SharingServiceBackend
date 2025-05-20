@@ -14,3 +14,11 @@ resources/.arch-internal-preview.css
 .arch-internal-preview.css
 
 /node_modules/
+
+# Firebase
+src/*firebase-adminsdk*.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
