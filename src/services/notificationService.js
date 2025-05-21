@@ -26,7 +26,7 @@ class NotificationService {
           return;
         }
 
-        const senderName = `${sender.name} ${sender.surname}`;
+        const senderName = `${sender.name} ${sender.surname[0]}.`;
         const notificationTitle = `New message from ${senderName}`;
         const notificationBody = message.length > 100 ? message.substring(0, 97) + '...' : message;
 

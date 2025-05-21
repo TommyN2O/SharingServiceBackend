@@ -192,17 +192,6 @@ class TaskRequest extends BaseModel {
 
         // Update payment status to completed
         await Payment.updateStatusToCompleted(taskId);
-
-        // Get task request to find tasker_id
-        const taskRequest = await this.findById(taskId);
-        if (!taskRequest) {
-          throw new Error('Task request not found');
-        }
-
-        // Update tasker's wallet
-        const amountInCents = Math.round(payment.amount * 100);
-        await User.updateWalletAmount(taskRequest.tasker_id, amountInCents);
-        console.log(`Updated wallet for tasker ${taskRequest.tasker_id} with amount ${amountInCents} cents`);
       }
 
       await client.query('COMMIT');

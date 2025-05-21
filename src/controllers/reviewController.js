@@ -1,6 +1,7 @@
 const Review = require('../models/Review');
 const TaskRequest = require('../models/TaskRequest');
 const { validationResult } = require('express-validator');
+const pool = require('../config/database');
 
 const reviewController = {
   // Get all reviews for a tasker
@@ -71,6 +72,29 @@ const reviewController = {
       };
 
       const newReview = await Review.createReview(reviewData);
+
+      // Get reviewer's name for notification
+      const reviewerQuery = `
+        SELECT name, surname 
+        FROM users 
+        WHERE id = $1
+      `;
+      const reviewerResult = await pool.query(reviewerQuery, [reviewer_id]);
+      const reviewer = reviewerResult.rows[0];
+
+      // Send notification to tasker
+      const FirebaseService = require('../services/firebaseService');
+      await FirebaseService.sendTaskRequestNotification(
+        reviewer_id,
+        taskRequest.tasker_id,
+        {
+          id: task_request_id.toString(),
+          title: '⭐ New Review',
+          description: `${reviewer.name} ${reviewer.surname[0]}. has left you a review`,
+          type: 'new_review'
+        }
+      );
+
       res.status(201).json(newReview);
     } catch (error) {
       console.error('Error creating review:', error);

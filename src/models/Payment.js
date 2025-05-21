@@ -14,7 +14,6 @@ class Payment extends BaseModel {
       await this.addStatusColumn();
       await this.addUserIdColumn();
       await this.addIsPaymentColumn();
-      await this.createPendingPaymentsTable();
       console.log('Payments table initialized successfully');
     } catch (error) {
       console.error('Error initializing payments table:', error);
@@ -111,28 +110,6 @@ class Payment extends BaseModel {
       await pool.query(query);
     } catch (error) {
       console.error('Error adding is_payment column:', error);
-      throw error;
-    }
-  }
-
-  // Create pending payments table
-  async createPendingPaymentsTable() {
-    try {
-      const query = `
-        CREATE TABLE IF NOT EXISTS pending_payments (
-          id SERIAL PRIMARY KEY,
-          task_request_id INTEGER REFERENCES task_requests(id) ON DELETE CASCADE,
-          tasker_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-          amount DECIMAL(10,2) NOT NULL,
-          stripe_session_id VARCHAR(255) NOT NULL,
-          stripe_payment_intent_id VARCHAR(255),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `;
-      await pool.query(query);
-      console.log('Pending payments table created successfully');
-    } catch (error) {
-      console.error('Error creating pending payments table:', error);
       throw error;
     }
   }
@@ -281,16 +258,7 @@ class Payment extends BaseModel {
 
         const { sender_id, tasker_id } = taskResult.rows[0];
 
-        // Update sender's payment status to completed
-        await client.query(`
-          UPDATE payments 
-          SET status = 'completed' 
-          WHERE task_request_id = $1 
-          AND user_id = $2
-          AND is_payment = true
-        `, [taskRequestId, sender_id]);
-
-        // Get tasker's payment record
+        // Get tasker's payment record to find the amount
         const taskerPaymentQuery = `
           SELECT amount 
           FROM payments 
@@ -306,22 +274,43 @@ class Payment extends BaseModel {
 
         const taskerAmount = taskerPaymentResult.rows[0].amount;
 
-        // Update tasker's payment status to completed and add amount to wallet
+        // Update both payment records to completed
         await client.query(`
           UPDATE payments 
           SET status = 'completed' 
           WHERE task_request_id = $1 
-          AND user_id = $2
-          AND is_payment = false
-        `, [taskRequestId, tasker_id]);
+          AND (user_id = $2 OR user_id = $3)
+        `, [taskRequestId, sender_id, tasker_id]);
 
         // Add amount to tasker's wallet
         const amountInCents = Math.round(taskerAmount * 100);
         await client.query(`
           UPDATE users 
-          SET wallet_amount = wallet_amount + $1 
+          SET wallet_amount = COALESCE(wallet_amount, 0) + $1 
           WHERE id = $2
         `, [amountInCents, tasker_id]);
+
+        // Get sender's name for notification
+        const senderQuery = `
+          SELECT name, surname 
+          FROM users 
+          WHERE id = $1
+        `;
+        const senderResult = await client.query(senderQuery, [sender_id]);
+        const sender = senderResult.rows[0];
+
+        // Send notification to tasker about payment completion
+        const FirebaseService = require('../services/firebaseService');
+        await FirebaseService.sendTaskRequestNotification(
+          sender_id,
+          tasker_id,
+          {
+            id: taskRequestId.toString(),
+            title: '💰 Received Payment',
+            description: `Payment from ${sender.name} ${sender.surname[0]}. has been added to your wallet`,
+            type: 'payment_completed'
+          }
+        );
 
         await client.query('COMMIT');
       } catch (error) {

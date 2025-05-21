@@ -136,6 +136,40 @@ class FirebaseService {
       return { success: false, error: error.message };
     }
   }
+
+  /**
+   * Send a task request notification
+   * @param {number} senderId - The sender's user ID
+   * @param {number} receiverId - The receiver's user ID
+   * @param {Object} taskData - The task request data
+   * @param {string} taskData.title - The notification title
+   * @param {string} taskData.description - The notification description
+   * @param {string} taskData.type - The notification type
+   * @param {Array} taskData.categories - The task categories
+   * @param {string} taskData.city - The task city
+   * @returns {Promise<Object>} - Result of the send operation
+   */
+  static async sendTaskRequestNotification(senderId, receiverId, taskData) {
+    try {
+      const notification = {
+        title: taskData.title,
+        body: taskData.description
+      };
+
+      const data = {
+        type: taskData.type,
+        taskId: taskData.id?.toString() || '',
+        categories: JSON.stringify(taskData.categories || []),
+        city: taskData.city || '',
+        click_action: 'FLUTTER_NOTIFICATION_CLICK'
+      };
+
+      return await this.sendNotificationToUser(receiverId, notification, data);
+    } catch (error) {
+      console.error('Error sending task request notification:', error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 module.exports = FirebaseService; 

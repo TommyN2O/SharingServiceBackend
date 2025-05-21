@@ -94,6 +94,28 @@ const paymentController = {
             ['paid', task_id]
           );
 
+          // Get sender's name for notification
+          const senderQuery = `
+            SELECT name, surname 
+            FROM users 
+            WHERE id = $1
+          `;
+          const senderResult = await client.query(senderQuery, [req.user.id]);
+          const sender = senderResult.rows[0];
+
+          // Send notification to tasker
+          const FirebaseService = require('../services/firebaseService');
+          await FirebaseService.sendTaskRequestNotification(
+            req.user.id,
+            taskRequest.tasker_id,
+            {
+              id: task_id.toString(),
+              title: `📋 Task request from ${sender.name} ${sender.surname[0]}.`,
+              description: `Task has been added to planned tasks`,
+              type: 'status_update'
+            }
+          );
+
           await client.query('COMMIT');
 
           return res.json({
@@ -336,6 +358,28 @@ const paymentController = {
               await pool.query(
                 'UPDATE task_requests SET status = $1 WHERE id = $2',
                 ['paid', taskId]
+              );
+
+              // Get sender's name for notification
+              const senderQuery = `
+                SELECT name, surname 
+                FROM users 
+                WHERE id = $1
+              `;
+              const senderResult = await pool.query(senderQuery, [senderId]);
+              const sender = senderResult.rows[0];
+
+              // Send notification to tasker
+              const FirebaseService = require('../services/firebaseService');
+              await FirebaseService.sendTaskRequestNotification(
+                senderId,
+                taskerId,
+                {
+                  id: taskId,
+                  title: `📋 Task request from ${sender.name} ${sender.surname[0]}.`,
+                  description: `Task has been added to planned tasks`,
+                  type: 'status_update'
+                }
               );
             }
           } catch (error) {

@@ -818,9 +818,10 @@ const taskerController = {
           sender_id,
           tasker_id,
           status,
-          created_at
+          created_at,
+          hourly_rate
         )
-        VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+        VALUES ($1, $2, $3, $4, $5, 'pending', NOW(), $6)
         RETURNING id, created_at
       `;
 
@@ -830,6 +831,7 @@ const taskerController = {
         duration,
         sender_id,
         taskerUserId, // Use the user_id we got from tasker_profiles
+        taskerProfile.hourly_rate // Add the tasker's hourly rate from their profile
       ]);
 
       const taskRequestId = taskRequestResult.rows[0].id;
@@ -873,6 +875,21 @@ const taskerController = {
       // Remove notification message creation since it's not needed right now
       await client.query('COMMIT');
       console.log('Transaction committed successfully');
+
+      // Send Firebase notification to tasker
+      const FirebaseService = require('../services/firebaseService');
+      await FirebaseService.sendTaskRequestNotification(
+        sender_id,
+        taskerUserId,
+        {
+          id: taskRequestId.toString(),
+          title: '📋 New Task Request',
+          description: `New task request in ${city.name} for ${categories.map(cat => cat.name).join(', ')}`,
+          type: 'new_task',
+          categories: JSON.stringify(categories.map(cat => ({ id: cat.id.toString(), name: cat.name }))),
+          city: JSON.stringify({ id: city.id.toString(), name: city.name })
+        }
+      );
 
       // Prepare the response object
       const response = {
@@ -1564,6 +1581,23 @@ const taskerController = {
           taskRequest.tasker_hourly_rate,
           id
         ]);
+
+        // If task is marked as completed, handle payment completion
+        if (finalStatus.toLowerCase() === 'completed') {
+          try {
+            // Get the payment record
+            const payment = await Payment.getByTaskRequestId(id);
+            if (!payment) {
+              throw new Error('Payment record not found');
+            }
+
+            // Update payment status to completed
+            await Payment.updateStatusToCompleted(id);
+          } catch (error) {
+            console.error('Error handling payment completion:', error);
+            throw error;
+          }
+        }
 
         await client.query('COMMIT');
         res.json(result.rows[0]);
