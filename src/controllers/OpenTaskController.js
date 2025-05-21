@@ -14,6 +14,7 @@ class OpenTaskController {
     this.getOpenTaskDates = this.getOpenTaskDates.bind(this);
     this.getTaskOffers = this.getTaskOffers.bind(this);
     this.getOfferById = this.getOfferById.bind(this);
+    this.deleteOpenTask = this.deleteOpenTask.bind(this);
   }
 
   // Simple validation functions
@@ -353,6 +354,33 @@ class OpenTaskController {
     } catch (error) {
       console.error('Error getting offer:', error);
       res.status(500).json({ error: 'Failed to get offer' });
+    }
+  }
+
+  // Delete an open task
+  async deleteOpenTask(req, res) {
+    try {
+      const taskId = req.params.id;
+      const userId = req.user.id;
+
+      // Check if task exists and user is the creator
+      const task = await this.openTaskModel.getById(taskId);
+      
+      if (!task) {
+        return res.status(404).json({ error: 'Task not found' });
+      }
+
+      if (task.creator_id !== userId) {
+        return res.status(403).json({ error: 'Not authorized to delete this task' });
+      }
+
+      // Delete the task
+      await this.openTaskModel.delete(taskId);
+      
+      res.json({ message: 'Task deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting open task:', error);
+      res.status(500).json({ error: 'Failed to delete task' });
     }
   }
 }

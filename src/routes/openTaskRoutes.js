@@ -82,6 +82,21 @@ router.get('/:id',
   openTaskController.getOpenTaskById
 );
 
+// Delete open task
+router.delete('/:id', 
+  authenticateToken,
+  openTaskController.deleteOpenTask
+);
+
+// Get dates for a specific open task
+router.get('/:taskId/dates', openTaskController.getOpenTaskDates);
+
+// Get all offers for a specific task
+router.get('/:taskId/offers', openTaskController.getTaskOffers);
+
+// Get specific offer by ID
+router.get('/offers/:offerId', openTaskController.getOfferById);
+
 // Create an offer for a task
 router.post('/:taskId/offers',
   authenticateToken,
@@ -94,14 +109,5 @@ router.post('/offers/:offerId/accept',
   authenticateToken,
   openTaskController.acceptOffer
 );
-
-// Get dates for a specific open task
-router.get('/:taskId/dates', openTaskController.getOpenTaskDates);
-
-// Get all offers for a specific task
-router.get('/:taskId/offers', openTaskController.getTaskOffers);
-
-// Get specific offer by ID
-router.get('/offers/:offerId', openTaskController.getOfferById);
 
 module.exports = router; 

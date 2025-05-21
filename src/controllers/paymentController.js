@@ -376,7 +376,7 @@ const paymentController = {
                 taskerId,
                 {
                   id: taskId,
-                  title: `📋 Task request from ${sender.name} ${sender.surname[0]}.`,
+                  title: `📋 Task from ${sender.name} ${sender.surname[0]}.`,
                   description: `Task has been added to planned tasks`,
                   type: 'status_update'
                 }

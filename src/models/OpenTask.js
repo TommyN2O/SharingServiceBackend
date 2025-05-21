@@ -428,6 +428,28 @@ class OpenTask extends BaseModel {
       `;
       await client.query(categoriesQuery, [taskRequestResult.rows[0].id, offer.category_id]);
 
+      // Get creator's name for notification
+      const creatorQuery = `
+        SELECT name, surname 
+        FROM users 
+        WHERE id = $1
+      `;
+      const creatorResult = await client.query(creatorQuery, [offer.creator_id]);
+      const creator = creatorResult.rows[0];
+
+      // Send notification to tasker
+      const FirebaseService = require('../services/firebaseService');
+      await FirebaseService.sendTaskRequestNotification(
+        offer.creator_id,
+        offer.tasker_id,
+        {
+          id: taskRequestResult.rows[0].id.toString(),
+          title: '✅ Offer Accepted',
+          description: `Your offer has been accepted by ${creator.name} ${creator.surname[0]}.`,
+          type: 'offer_accepted'
+        }
+      );
+
       // Get the complete task request with all related data
       const completeTaskQuery = `
         SELECT 
@@ -485,6 +507,9 @@ class OpenTask extends BaseModel {
         id: completeTask.rows[0].id,
         tasker: completeTask.rows[0].tasker
       });
+
+      // Delete all offers for this task since one was accepted
+      await client.query('DELETE FROM open_task_offers WHERE task_id = $1', [offer.task_id]);
 
       await client.query('COMMIT');
       return completeTask.rows[0];
@@ -594,6 +619,29 @@ class OpenTask extends BaseModel {
     `;
     const result = await pool.query(query, [offerId]);
     return result.rows[0];
+  }
+
+  // Delete an open task and all related data
+  async delete(taskId) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Delete related records first (due to foreign key constraints)
+      await client.query('DELETE FROM open_task_photos WHERE task_id = $1', [taskId]);
+      await client.query('DELETE FROM open_task_dates WHERE task_id = $1', [taskId]);
+      await client.query('DELETE FROM open_task_offers WHERE task_id = $1', [taskId]);
+      
+      // Delete the task itself
+      await client.query('DELETE FROM open_tasks WHERE id = $1', [taskId]);
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 

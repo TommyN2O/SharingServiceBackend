@@ -1470,6 +1470,8 @@ const taskerController = {
             tr.description, 
             tr.city_id, 
             tr.duration,
+            tr.sender_id,
+            tr.tasker_id,
             tp.hourly_rate as tasker_hourly_rate,
             (SELECT array_agg(trc.category_id) FROM task_request_categories trc WHERE trc.task_request_id = tr.id) as category_ids,
             (SELECT array_agg(trg.image_url) FROM task_request_gallery trg WHERE trg.task_request_id = tr.id) as gallery_images,
@@ -1487,11 +1489,65 @@ const taskerController = {
         }
 
         const taskRequest = currentStatusResult.rows[0];
+        
+        // Check if user is either the sender or tasker
+        if (taskRequest.sender_id !== req.user.id && taskRequest.tasker_id !== req.user.id) {
+          return res.status(403).json({ error: 'Not authorized to update this task request' });
+        }
+
         const currentStatus = taskRequest.status;
         console.log('Current status:', currentStatus, 'New status:', status);
 
         // Convert 'Accepted' status to 'Waiting for Payment'
         const finalStatus = status === 'Accepted' ? 'Waiting for Payment' : status;
+
+        // Handle cancellation of task request that came from open task
+        if (finalStatus === 'Canceled by sender' && taskRequest.is_open_task && taskRequest.open_task_id) {
+          try {
+            // First update task request to remove open task reference
+            const updateQuery = `
+              UPDATE task_requests 
+              SET status = $1::varchar,
+                  is_open_task = false,
+                  open_task_id = null
+              WHERE id = $2 
+              RETURNING *
+            `;
+            const result = await client.query(updateQuery, [finalStatus, id]);
+
+            // Then delete the open task
+            await client.query('DELETE FROM open_tasks WHERE id = $1', [taskRequest.open_task_id]);
+
+            // Get sender's name for notification
+            const senderQuery = `
+              SELECT name, surname 
+              FROM users 
+              WHERE id = $1
+            `;
+            const senderResult = await client.query(senderQuery, [req.user.id]);
+            const sender = senderResult.rows[0];
+
+            // Send notification to tasker
+            const FirebaseService = require('../services/firebaseService');
+            await FirebaseService.sendTaskRequestNotification(
+              req.user.id,
+              taskRequest.tasker_id,
+              {
+                id: id.toString(),
+                title: '❌ Task Canceled',
+                description: `Task has been canceled by ${sender.name} ${sender.surname[0]}.`,
+                type: 'task_canceled'
+              }
+            );
+
+            await client.query('COMMIT');
+            return res.json(result.rows[0]);
+          } catch (error) {
+            console.error('Error handling open task cancellation:', error);
+            await client.query('ROLLBACK');
+            return res.status(500).json({ error: 'Failed to cancel open task' });
+          }
+        }
 
         // Special handling for canceling a paid open task
         if (finalStatus === 'Canceled' && currentStatus === 'paid' && taskRequest.is_open_task && taskRequest.open_task_id) {
@@ -1527,6 +1583,28 @@ const taskerController = {
             `;
             const taskRequestResult = await client.query(updateTaskRequestQuery, [id]);
 
+            // Get sender's name for notification
+            const senderQuery = `
+              SELECT name, surname 
+              FROM users 
+              WHERE id = $1
+            `;
+            const senderResult = await client.query(senderQuery, [taskRequest.sender_id]);
+            const sender = senderResult.rows[0];
+
+            // Send notification to tasker
+            const FirebaseService = require('../services/firebaseService');
+            await FirebaseService.sendTaskRequestNotification(
+              taskRequest.sender_id,
+              taskRequest.tasker_id,
+              {
+                id: id.toString(),
+                title: '❌ Planned Task Canceled',
+                description: `Planned Task has been canceled by ${sender.name} ${sender.surname[0]}. Payment has been refunded.`,
+                type: 'task_canceled'
+              }
+            );
+
             await client.query('COMMIT');
             return res.json({ 
               message: 'Task request canceled and refunded',
@@ -1554,6 +1632,28 @@ const taskerController = {
               RETURNING *
             `;
             const result = await client.query(updateQuery, [id]);
+
+            // Get sender's name for notification
+            const senderQuery = `
+              SELECT name, surname 
+              FROM users 
+              WHERE id = $1
+            `;
+            const senderResult = await client.query(senderQuery, [req.user.id]);
+            const sender = senderResult.rows[0];
+
+            // Send notification to tasker
+            const FirebaseService = require('../services/firebaseService');
+            await FirebaseService.sendTaskRequestNotification(
+              req.user.id,
+              taskRequest.tasker_id,
+              {
+                id: id.toString(),
+                title: '❌ Planned Task Canceled',
+                description: `Planned task has been canceled by ${sender.name} ${sender.surname[0]}.`,
+                type: 'task_canceled'
+              }
+            );
             
             await client.query('COMMIT');
             return res.json(result.rows[0]);
@@ -1581,6 +1681,31 @@ const taskerController = {
           taskRequest.tasker_hourly_rate,
           id
         ]);
+
+        // If status is "Canceled by sender", send notification to tasker
+        if (finalStatus === 'Canceled by sender') {
+          // Get sender's name
+          const senderQuery = `
+            SELECT name, surname 
+            FROM users 
+            WHERE id = $1
+          `;
+          const senderResult = await client.query(senderQuery, [req.user.id]);
+          const sender = senderResult.rows[0];
+
+          // Send notification to tasker
+          const FirebaseService = require('../services/firebaseService');
+          await FirebaseService.sendTaskRequestNotification(
+            req.user.id,
+            taskRequest.tasker_id,
+            {
+              id: id.toString(),
+              title: '❌ Task Canceled',
+              description: `Task request has been canceled by ${sender.name} ${sender.surname[0]}.`,
+              type: 'task_canceled'
+            }
+          );
+        }
 
         // If task is marked as completed, handle payment completion
         if (finalStatus.toLowerCase() === 'completed') {
