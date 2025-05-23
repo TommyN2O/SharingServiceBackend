@@ -150,8 +150,12 @@ class OpenTaskController {
 
       // Handle photos
       if (req.files && req.files.length > 0) {
-        finalTaskData.photos = req.files.map(file => file.path);
-        console.log('Added photos:', finalTaskData.photos);
+        finalTaskData.photos = req.files.map(file => {
+          // Extract just the filename from the full path
+          const filename = file.filename || file.path.split('\\').pop().split('/').pop();
+          return `images/tasks/${filename}`;
+        });
+        console.log('Added photos with correct path format:', finalTaskData.photos);
       }
 
       const task = await this.openTaskModel.create(finalTaskData);

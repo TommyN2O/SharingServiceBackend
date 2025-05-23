@@ -334,7 +334,12 @@ class OpenTask extends BaseModel {
           ot.category_id,
           ot.description as task_description,
           tp.description as tasker_description,
-          tp.profile_photo as tasker_profile_photo
+          tp.profile_photo as tasker_profile_photo,
+          (
+            SELECT json_agg(photo_url)
+            FROM open_task_photos
+            WHERE task_id = ot.id
+          ) as photos
         FROM open_task_offers oto
         JOIN open_tasks ot ON oto.task_id = ot.id
         JOIN users u ON oto.tasker_id = u.id
@@ -359,7 +364,7 @@ class OpenTask extends BaseModel {
       // Update offer status
       await client.query(
         'UPDATE open_task_offers SET status = $1 WHERE id = $2',
-        ['accepted', offerId]
+        ['accepted', offer.offer_id]
       );
 
       // Update task status
@@ -374,7 +379,7 @@ class OpenTask extends BaseModel {
         FROM open_task_offers 
         WHERE id = $1
       `;
-      const offerRateResult = await client.query(offerRateQuery, [offerId]);
+      const offerRateResult = await client.query(offerRateQuery, [offer.offer_id]);
       const hourlyRate = offerRateResult.rows[0].hourly_rate;
 
       // Create task request using offer details
@@ -427,6 +432,23 @@ class OpenTask extends BaseModel {
         VALUES ($1, $2)
       `;
       await client.query(categoriesQuery, [taskRequestResult.rows[0].id, offer.category_id]);
+
+      // Copy photos from open task to task request
+      if (offer.photos && offer.photos.length > 0) {
+        for (const photoUrl of offer.photos) {
+          if (photoUrl) {
+            // Extract just the filename from the full path
+            const filename = photoUrl.split('\\').pop().split('/').pop();
+            const formattedPath = `images/tasks/${filename}`;
+            
+            await client.query(
+              `INSERT INTO task_request_gallery (task_request_id, image_url)
+               VALUES ($1, $2)`,
+              [taskRequestResult.rows[0].id, formattedPath]
+            );
+          }
+        }
+      }
 
       // Get creator's name for notification
       const creatorQuery = `
@@ -488,7 +510,21 @@ class OpenTask extends BaseModel {
                 'description', tp.description,
                 'hourly_rate', tp.hourly_rate
               )
-          END as tasker
+          END as tasker,
+          COALESCE(
+            (
+              SELECT json_agg(
+                CASE 
+                  WHEN trg.image_url LIKE 'C:%' OR trg.image_url LIKE '/C:%' 
+                  THEN replace(regexp_replace(trg.image_url, '^.*?public[/\\\\]', ''), '\\', '/')
+                  ELSE replace(trg.image_url, '\\', '/')
+                END
+              )
+              FROM task_request_gallery trg
+              WHERE trg.task_request_id = tr.id
+            ),
+            '[]'::json
+          ) as gallery
         FROM task_requests tr
         JOIN cities c ON tr.city_id = c.id
         JOIN task_request_categories trc ON tr.id = trc.task_request_id

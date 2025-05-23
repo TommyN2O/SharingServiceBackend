@@ -1650,6 +1650,30 @@ const taskerController = {
             const senderResult = await client.query(senderQuery, [taskRequest.sender_id]);
             const sender = senderResult.rows[0];
 
+            // Get task request gallery photos and convert paths before deleting
+            const galleryQuery = `
+              SELECT image_url 
+              FROM task_request_gallery 
+              WHERE task_request_id = $1
+            `;
+            const galleryResult = await client.query(galleryQuery, [id]);
+            const convertedPhotos = galleryResult.rows.map(photo => {
+              // Extract just the filename from the full path
+              const filename = photo.image_url.split('\\').pop().split('/').pop();
+              return `images/tasks/${filename}`;
+            });
+
+            // If there are photos, insert them with correct path format
+            if (convertedPhotos.length > 0) {
+              for (const photoUrl of convertedPhotos) {
+                await client.query(
+                  `INSERT INTO open_task_photos (task_id, photo_url)
+                   VALUES ($1, $2)`,
+                  [openTaskResult.rows[0].id, photoUrl]
+                );
+              }
+            }
+
             // Delete the task request and all related data
             await client.query('DELETE FROM task_request_gallery WHERE task_request_id = $1', [id]);
             await client.query('DELETE FROM task_request_categories WHERE task_request_id = $1', [id]);
@@ -1688,7 +1712,7 @@ const taskerController = {
               {
                 id: openTaskResult.rows[0].id.toString(),
                 title: '📋 Task Now Open',
-                description: `Your task is now visible to all taskers.`,
+                description: `Task is now available for all taskers.`,
                 type: 'task_open'
               }
             );
@@ -2885,10 +2909,14 @@ const taskerController = {
       if (taskRequest.gallery_images && taskRequest.gallery_images.length > 0) {
         for (const imageUrl of taskRequest.gallery_images) {
           if (imageUrl) {
+            // Extract just the filename from the full path
+            const filename = imageUrl.split('\\').pop().split('/').pop();
+            const formattedPath = `images/tasks/${filename}`;
+            
             await client.query(
               `INSERT INTO open_task_photos (task_id, photo_url)
                VALUES ($1, $2)`,
-              [openTask.id, imageUrl]
+              [openTask.id, formattedPath]
             );
           }
         }
