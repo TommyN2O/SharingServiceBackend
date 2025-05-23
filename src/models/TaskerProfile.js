@@ -641,6 +641,7 @@ class TaskerProfile extends BaseModel {
       category: filters.category ? parseInt(filters.category) : undefined,
       minPrice: filters.minPrice !== null ? parseFloat(filters.minPrice) : undefined,
       maxPrice: filters.maxPrice !== null ? parseFloat(filters.maxPrice) : undefined,
+      excludeUserId: filters.excludeUserId // Add excludeUserId to normalized filters
     };
 
     console.log('Original filters:', filters);
@@ -723,6 +724,12 @@ class TaskerProfile extends BaseModel {
 
     const queryParams = [];
     const conditions = [];
+
+    // Add condition to exclude user's own profile
+    if (normalizedFilters.excludeUserId) {
+      queryParams.push(normalizedFilters.excludeUserId);
+      conditions.push(`tp.user_id != $${queryParams.length}`);
+    }
 
     // Add city filter if provided
     if (normalizedFilters.city) {

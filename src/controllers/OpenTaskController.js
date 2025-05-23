@@ -173,14 +173,23 @@ class OpenTaskController {
   // Get all open tasks with filters
   async getAllOpenTasks(req, res) {
     try {
+      console.log('Getting all open tasks with filters:', req.query);
+
+      // Parse city IDs into an array if provided
+      const cityIds = req.query.city ? req.query.city.split(',').map(id => parseInt(id)) : null;
+
       const filters = {
-        category: req.query.category,
-        category_id: req.query.category_id,
-        location_id: req.query.location_id,
-        min_budget: req.query.min_budget,
-        max_budget: req.query.max_budget,
-        status: req.query.status || 'open'
+        category: req.query.category ? parseInt(req.query.category) : null,
+        cityIds: cityIds,
+        date: req.query.date ? req.query.date : null,
+        minBudget: req.query.minBudget ? parseInt(req.query.minBudget) : null,
+        maxBudget: req.query.maxBudget ? parseInt(req.query.maxBudget) : null,
+        duration: req.query.duration ? parseInt(req.query.duration) : null,
+        excludeUserId: req.query.excludeUserId ? parseInt(req.query.excludeUserId) : null,
+        status: 'open'
       };
+
+      console.log('Normalized filters:', filters);
 
       const tasks = await this.openTaskModel.getAll(filters);
       res.json(tasks);

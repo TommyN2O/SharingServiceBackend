@@ -564,6 +564,7 @@ const taskerController = {
         timeTo: req.query.timeTo ? req.query.timeTo : null,
         minPrice: req.query.minPrice ? parseFloat(req.query.minPrice) : null,
         maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice) : null,
+        excludeUserId: req.user.id // Add user ID to exclude their own profile
       };
 
       const profiles = await TaskerProfile.getAllProfiles(filters);
@@ -974,6 +975,14 @@ const taskerController = {
       const sender_id = req.user.id;
       console.log('Getting tasks for sender ID:', sender_id);
 
+      // Parse filters from query parameters
+      const categoryIds = req.query.category ? req.query.category.split(',').map(id => parseInt(id)) : null;
+      const cityIds = req.query.city ? req.query.city.split(',').map(id => parseInt(id)) : null;
+      const date = req.query.date || null;
+      const status = req.query.status ? req.query.status.toLowerCase() : null; // Convert status to lowercase
+
+      console.log('Filters:', { categoryIds, cityIds, date, status });
+
       const client = await pool.connect();
       try {
         // Debug: Check if tables exist and have data
@@ -992,7 +1001,7 @@ const taskerController = {
           userExists: tableChecks.rows[0].user_exists,
         });
 
-        const query = `
+        let query = `
           -- Task Requests
           SELECT 
             'task_request' as task_type,
@@ -1060,6 +1069,18 @@ const taskerController = {
           JOIN users t ON tr.tasker_id = t.id
           LEFT JOIN tasker_profiles tp ON t.id = tp.user_id
           WHERE tr.sender_id = $1
+          ${status ? "AND LOWER(tr.status) = $2" : ""}
+          ${categoryIds ? `AND EXISTS (
+            SELECT 1 FROM task_request_categories trc 
+            WHERE trc.task_request_id = tr.id 
+            AND trc.category_id = ANY($${status ? 3 : 2}::integer[])
+          )` : ""}
+          ${cityIds ? `AND c.id = ANY($${status ? categoryIds ? 4 : 3 : categoryIds ? 3 : 2}::integer[])` : ""}
+          ${date ? `AND EXISTS (
+            SELECT 1 FROM task_request_availability tra 
+            WHERE tra.task_request_id = tr.id 
+            AND tra.date = $${status ? categoryIds ? cityIds ? 5 : 4 : 4 : categoryIds ? cityIds ? 4 : 3 : cityIds ? 3 : 2}::date
+          )` : ""}
 
           UNION ALL
 
@@ -1126,6 +1147,14 @@ const taskerController = {
           JOIN categories cat ON ot.category_id = cat.id
           JOIN users s ON ot.creator_id = s.id
           WHERE ot.creator_id = $1
+          ${status ? "AND LOWER(ot.status) = $2" : ""}
+          ${categoryIds ? `AND ot.category_id = ANY($${status ? 3 : 2}::integer[])` : ""}
+          ${cityIds ? `AND c.id = ANY($${status ? categoryIds ? 4 : 3 : categoryIds ? 3 : 2}::integer[])` : ""}
+          ${date ? `AND EXISTS (
+            SELECT 1 FROM open_task_dates otd 
+            WHERE otd.task_id = ot.id 
+            AND otd.date = $${status ? categoryIds ? cityIds ? 5 : 4 : 4 : categoryIds ? cityIds ? 4 : 3 : cityIds ? 3 : 2}::date
+          )` : ""}
           AND NOT EXISTS (
             SELECT 1 
             FROM task_requests tr 
@@ -1136,7 +1165,16 @@ const taskerController = {
           ORDER BY created_at DESC
         `;
 
-        const result = await client.query(query, [sender_id]);
+        // Build parameters array
+        const params = [sender_id];
+        if (status) params.push(status);
+        if (categoryIds) params.push(categoryIds);
+        if (cityIds) params.push(cityIds);
+        if (date) params.push(date);
+
+        console.log('Query parameters:', params);
+
+        const result = await client.query(query, params);
         console.log(`Found ${result.rows.length} total tasks for user ${sender_id}`);
 
         // Format the response
@@ -1199,6 +1237,14 @@ const taskerController = {
       const tasker_id = req.user.id;
       console.log('Getting task requests for tasker ID:', tasker_id);
 
+      // Parse filters from query parameters
+      const categoryIds = req.query.category ? req.query.category.split(',').map(id => parseInt(id)) : null;
+      const cityIds = req.query.city ? req.query.city.split(',').map(id => parseInt(id)) : null;
+      const date = req.query.date || null;
+      const status = req.query.status ? req.query.status.toLowerCase() : null;
+
+      console.log('Filters:', { categoryIds, cityIds, date, status });
+
       const client = await pool.connect();
       try {
         // Debug: Check if tables exist and have data
@@ -1225,21 +1271,6 @@ const taskerController = {
             tr.created_at,
             c.id as city_id,
             c.name as city_name,
-            -- Sender details
-            s.id as sender_id,
-            s.name as sender_name,
-            s.surname as sender_surname,
-            COALESCE(s.profile_photo, '') as sender_profile_photo,
-            -- Tasker details
-            t.id as tasker_id,
-            t.name as tasker_name,
-            t.surname as tasker_surname,
-            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
-            tp.description as tasker_description,
-            CASE 
-              WHEN tr.status IN ('Accepted', 'paid', 'Completed') THEN tr.hourly_rate
-              ELSE tp.hourly_rate
-            END as tasker_hourly_rate,
             -- Categories as JSON array
             (
               SELECT json_agg(json_build_object(
@@ -1261,11 +1292,35 @@ const taskerController = {
               FROM task_request_availability tra
               WHERE tra.task_request_id = tr.id
             ) as availability,
-            -- Gallery as JSON array
-            (
-              SELECT json_agg(trg.image_url)
-              FROM task_request_gallery trg
-              WHERE trg.task_request_id = tr.id
+            -- Sender details
+            s.id as sender_id,
+            s.name as sender_name,
+            s.surname as sender_surname,
+            COALESCE(s.profile_photo, '') as sender_profile_photo,
+            -- Tasker details
+            t.id as tasker_id,
+            t.name as tasker_name,
+            t.surname as tasker_surname,
+            COALESCE(tp.profile_photo, '') as tasker_profile_photo,
+            tp.description as tasker_description,
+            CASE 
+              WHEN tr.status IN ('Accepted', 'paid', 'Completed') THEN tr.hourly_rate
+              ELSE tp.hourly_rate
+            END as tasker_hourly_rate,
+            -- Gallery as JSON array with relative paths and forward slashes
+            COALESCE(
+              (
+                SELECT json_agg(
+                  CASE 
+                    WHEN trg.image_url LIKE 'C:%' OR trg.image_url LIKE '/C:%' 
+                    THEN replace(regexp_replace(trg.image_url, '^.*?public[/\\\\]', ''), '\\', '/')
+                    ELSE replace(trg.image_url, '\\', '/')
+                  END
+                )
+                FROM task_request_gallery trg
+                WHERE trg.task_request_id = tr.id
+              ),
+              '[]'::json
             ) as gallery
           FROM task_requests tr
           JOIN cities c ON tr.city_id = c.id
@@ -1273,10 +1328,31 @@ const taskerController = {
           JOIN users t ON tr.tasker_id = t.id
           JOIN tasker_profiles tp ON t.id = tp.user_id
           WHERE tr.tasker_id = $1
+          ${status ? "AND LOWER(tr.status) = $2" : ""}
+          ${categoryIds ? `AND EXISTS (
+            SELECT 1 FROM task_request_categories trc 
+            WHERE trc.task_request_id = tr.id 
+            AND trc.category_id = ANY($${status ? 3 : 2}::integer[])
+          )` : ""}
+          ${cityIds ? `AND c.id = ANY($${status ? categoryIds ? 4 : 3 : categoryIds ? 3 : 2}::integer[])` : ""}
+          ${date ? `AND EXISTS (
+            SELECT 1 FROM task_request_availability tra 
+            WHERE tra.task_request_id = tr.id 
+            AND tra.date = $${status ? categoryIds ? cityIds ? 5 : 4 : 4 : categoryIds ? cityIds ? 4 : 3 : cityIds ? 3 : 2}::date
+          )` : ""}
           ORDER BY tr.created_at DESC
         `;
 
-        const result = await client.query(query, [tasker_id]);
+        // Build parameters array
+        const params = [tasker_id];
+        if (status) params.push(status);
+        if (categoryIds) params.push(categoryIds);
+        if (cityIds) params.push(cityIds);
+        if (date) params.push(date);
+
+        console.log('Query parameters:', params);
+
+        const result = await client.query(query, params);
         console.log(`Found ${result.rows.length} task requests for tasker ${tasker_id}`);
 
         // Format the response

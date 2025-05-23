@@ -186,10 +186,12 @@ class OpenTask extends BaseModel {
   async getAll(filters = {}) {
     const {
       category,
-      category_id,
-      location_id,
-      min_budget,
-      max_budget,
+      cityIds,
+      date,
+      minBudget,
+      maxBudget,
+      duration,
+      excludeUserId,
       status = 'open'
     } = filters;
 
@@ -199,13 +201,17 @@ class OpenTask extends BaseModel {
         ot.description,
         ot.budget,
         ot.duration,
+        ot.status,
+        ot.created_at,
         jsonb_build_object(
           'id', ci.id,
           'name', ci.name
         ) as city,
         jsonb_build_object(
           'id', c.id,
-          'name', c.name
+          'name', c.name,
+          'description', c.description,
+          'image_url', c.image_url
         ) as category,
         jsonb_build_object(
           'id', u.id,
@@ -213,10 +219,15 @@ class OpenTask extends BaseModel {
           'surname', u.surname,
           'profile_photo', u.profile_photo
         ) as creator,
-        json_agg(DISTINCT jsonb_build_object(
-          'date', otd.date,
-          'time', otd.time
-        )) FILTER (WHERE otd.date IS NOT NULL) as availability,
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'date', to_char(otd.date, 'YYYY-MM-DD'),
+              'time', to_char(otd.time, 'HH24:MI:SS')
+            )
+          ) FILTER (WHERE otd.date IS NOT NULL),
+          '[]'
+        ) as availability,
         COALESCE(
           json_agg(
             DISTINCT regexp_replace(
@@ -226,7 +237,7 @@ class OpenTask extends BaseModel {
             )
           ) FILTER (WHERE otp.photo_url IS NOT NULL),
           '[]'::json
-        ) as gallery_images
+        ) as gallery
       FROM open_tasks ot
       LEFT JOIN categories c ON ot.category_id = c.id
       LEFT JOIN open_task_photos otp ON ot.id = otp.task_id
@@ -239,44 +250,82 @@ class OpenTask extends BaseModel {
     const params = [status];
     let paramCount = 1;
 
-    // Handle both category and category_id parameters
-    const categoryValue = category || category_id;
-    if (categoryValue) {
+    // Exclude tasks created by the specified user
+    if (excludeUserId) {
+      paramCount++;
+      query += ` AND ot.creator_id != $${paramCount}`;
+      params.push(excludeUserId);
+    }
+
+    // Filter by category
+    if (category) {
       paramCount++;
       query += ` AND ot.category_id = $${paramCount}`;
-      params.push(categoryValue);
+      params.push(category);
     }
 
-    if (location_id) {
+    // Filter by cities using ANY
+    if (cityIds && cityIds.length > 0) {
       paramCount++;
-      query += ` AND ot.location_id = $${paramCount}`;
-      params.push(location_id);
+      query += ` AND ot.location_id = ANY($${paramCount})`;
+      params.push(cityIds);
     }
 
-    if (min_budget) {
+    // Filter by date
+    if (date) {
+      paramCount++;
+      query += ` AND EXISTS (
+        SELECT 1 FROM open_task_dates otd2 
+        WHERE otd2.task_id = ot.id 
+        AND otd2.date = $${paramCount}::date
+      )`;
+      params.push(date);
+    }
+
+    // Filter by budget range
+    if (minBudget !== undefined && minBudget !== null) {
       paramCount++;
       query += ` AND ot.budget >= $${paramCount}`;
-      params.push(min_budget);
+      params.push(minBudget);
     }
 
-    if (max_budget) {
+    if (maxBudget !== undefined && maxBudget !== null) {
       paramCount++;
       query += ` AND ot.budget <= $${paramCount}`;
-      params.push(max_budget);
+      params.push(maxBudget);
+    }
+
+    // Filter by duration
+    if (duration) {
+      paramCount++;
+      query += ` AND ot.duration = $${paramCount}`;
+      params.push(duration);
     }
 
     query += ` 
-      GROUP BY ot.id, c.id, c.name, ci.id, ci.name, u.id, u.name, u.surname, u.profile_photo
+      GROUP BY ot.id, c.id, c.name, c.description, c.image_url, ci.id, ci.name, 
+               u.id, u.name, u.surname, u.profile_photo
       ORDER BY ot.created_at DESC
     `;
+
+    console.log('Final query:', query);
+    console.log('Final parameters:', params);
 
     const result = await pool.query(query, params);
     
     return result.rows.map(row => ({
-      ...row,
-      gallery_images: Array.isArray(row.gallery_images) ? 
-        row.gallery_images.map(path => path.replace(/\\/g, '/')) : [],
-      availability: Array.isArray(row.availability) ? row.availability : []
+      id: row.id,
+      description: row.description,
+      budget: row.budget,
+      duration: row.duration,
+      status: row.status,
+      created_at: row.created_at,
+      city: row.city,
+      category: row.category,
+      creator: row.creator,
+      availability: Array.isArray(row.availability) ? row.availability : [],
+      gallery: Array.isArray(row.gallery) ? 
+        row.gallery.map(path => path.replace(/\\/g, '/')) : []
     }));
   }
 
