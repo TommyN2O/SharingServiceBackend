@@ -1622,6 +1622,89 @@ const taskerController = {
           }
         }
 
+        // Handle cancellation of unpaid open task
+        if (finalStatus === 'Canceled' && currentStatus !== 'paid' && taskRequest.is_open_task && taskRequest.open_task_id) {
+          try {
+            // Store the open_task_id before we remove it
+            const openTaskId = taskRequest.open_task_id;
+
+            // Update open task status back to 'open'
+            const updateOpenTaskQuery = `
+              UPDATE open_tasks 
+              SET status = 'open'::varchar
+              WHERE id = $1
+              RETURNING *
+            `;
+            const openTaskResult = await client.query(updateOpenTaskQuery, [openTaskId]);
+
+            if (!openTaskResult.rows.length) {
+              throw new Error('Failed to update open task status');
+            }
+
+            // Get sender's name for notification before deleting the task request
+            const senderQuery = `
+              SELECT name, surname 
+              FROM users 
+              WHERE id = $1
+            `;
+            const senderResult = await client.query(senderQuery, [taskRequest.sender_id]);
+            const sender = senderResult.rows[0];
+
+            // Delete the task request and all related data
+            await client.query('DELETE FROM task_request_gallery WHERE task_request_id = $1', [id]);
+            await client.query('DELETE FROM task_request_categories WHERE task_request_id = $1', [id]);
+            await client.query('DELETE FROM task_request_availability WHERE task_request_id = $1', [id]);
+            await client.query('DELETE FROM task_requests WHERE id = $1', [id]);
+
+            // Send notification to tasker
+            const FirebaseService = require('../services/firebaseService');
+            await FirebaseService.sendTaskRequestNotification(
+              taskRequest.sender_id,
+              taskRequest.tasker_id,
+              {
+                id: id.toString(),
+                title: '❌ Task Canceled',
+                description: `Task with ${sender.name} ${sender.surname[0]}. has been canceled.`,
+                type: 'task_canceled'
+              }
+            );
+
+            // Send notification to sender about cancellation
+            await FirebaseService.sendTaskRequestNotification(
+              taskRequest.tasker_id,
+              taskRequest.sender_id,
+              {
+                id: id.toString(),
+                title: '❌ Task Canceled',
+                description: `Your task with ${tasker.name} ${tasker.surname[0]}. has been canceled.`,
+                type: 'task_canceled'
+              }
+            );
+
+            // Send notification to sender about task being open
+            await FirebaseService.sendTaskRequestNotification(
+              taskRequest.tasker_id,
+              taskRequest.sender_id,
+              {
+                id: openTaskResult.rows[0].id.toString(),
+                title: '📋 Task Now Open',
+                description: `Your task is now visible to all taskers.`,
+                type: 'task_open'
+              }
+            );
+
+            await client.query('COMMIT');
+            return res.json({ 
+              message: 'Task request canceled and deleted',
+              open_task: openTaskResult.rows[0]
+            });
+          } catch (error) {
+            console.error('Error handling open task cancellation:', error);
+            await client.query('ROLLBACK');
+            return res.status(500).json({ error: 'Failed to cancel open task' });
+          }
+        }
+
         // Special handling for canceling a paid open task
         if (finalStatus === 'Canceled' && currentStatus === 'paid' && taskRequest.is_open_task && taskRequest.open_task_id) {
           try {
@@ -1702,6 +1785,18 @@ const taskerController = {
               }
             );
 
+            // Send notification to sender about task being open
+            await FirebaseService.sendTaskRequestNotification(
+              taskRequest.tasker_id,
+              taskRequest.sender_id,
+              {
+                id: openTaskResult.rows[0].id.toString(),
+                title: '📋 Task Now Open',
+                description: `Your task is now visible to all taskers and available for new offers.`,
+                type: 'task_open'
+              }
+            );
+
             await client.query('COMMIT');
             return res.json({ 
               message: 'Task request canceled and refunded',
@@ -1773,6 +1868,18 @@ const taskerController = {
                 title: '💰 Payment Refunded',
                 description: `The payment for your canceled task has been refunded to your wallet.`,
                 type: 'payment_refunded'
+              }
+            );
+
+            // Send notification to sender about task being open
+            await FirebaseService.sendTaskRequestNotification(
+              taskRequest.tasker_id,
+              taskRequest.sender_id,
+              {
+                id: openTaskResult.rows[0].id.toString(),
+                title: '📋 Task Now Open',
+                description: `Your task is now visible to all taskers and available for new offers.`,
+                type: 'task_open'
               }
             );
             
