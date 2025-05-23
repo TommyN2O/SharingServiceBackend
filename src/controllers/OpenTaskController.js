@@ -1,4 +1,5 @@
 const OpenTask = require('../models/OpenTask');
+const pool = require('../config/database');
 
 class OpenTaskController {
   constructor() {
@@ -254,6 +255,29 @@ class OpenTaskController {
         },
         status: offer.status
       };
+
+      // Get task creator's ID and tasker's name
+      const taskQuery = `
+        SELECT ot.creator_id, u.name, u.surname
+        FROM open_tasks ot
+        JOIN users u ON u.id = $1
+        WHERE ot.id = $2
+      `;
+      const taskResult = await pool.query(taskQuery, [req.user.id, taskId]);
+      const { creator_id, name, surname } = taskResult.rows[0];
+
+      // Send notification to task creator
+      const FirebaseService = require('../services/firebaseService');
+      await FirebaseService.sendTaskRequestNotification(
+        req.user.id,
+        creator_id,
+        {
+          id: taskId.toString(),
+          title: '📋 New Offer Received',
+          description: `${name} ${surname[0]}. has sent an offer for your open task.`,
+          type: 'new_offer'
+        }
+      );
 
       res.status(201).json(formattedOffer);
     } catch (error) {
