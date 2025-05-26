@@ -214,7 +214,7 @@ class TaskerProfile extends BaseModel {
         END as profile_photo,
         tp.description,
         tp.hourly_rate,
-        COALESCE(AVG(r.rating), 0) as rating,
+        ROUND(COALESCE(AVG(r.rating), 0)::numeric, 2) as rating,
         COUNT(DISTINCT r.id) as review_count,
         u.name,
         u.surname,
@@ -651,7 +651,7 @@ class TaskerProfile extends BaseModel {
       WITH tasker_ratings AS (
         SELECT 
           tp.id as tasker_id,
-          COALESCE(AVG(r.rating), 0) as avg_rating,
+          ROUND(COALESCE(AVG(r.rating), 0)::numeric, 2) as avg_rating,
           COUNT(DISTINCT r.id) as review_count
         FROM tasker_profiles tp
         LEFT JOIN users u ON tp.user_id = u.id
@@ -815,7 +815,7 @@ class TaskerProfile extends BaseModel {
       WITH tasker_ratings AS (
         SELECT 
           tp.id as tasker_id,
-          COALESCE(AVG(r.rating), 0) as avg_rating,
+          ROUND(COALESCE(AVG(r.rating), 0)::numeric, 2) as avg_rating,
           COUNT(DISTINCT r.id) as review_count
         FROM tasker_profiles tp
         LEFT JOIN users u ON tp.user_id = u.id

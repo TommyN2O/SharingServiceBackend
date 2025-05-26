@@ -527,6 +527,28 @@ const userController = {
       });
     }
   },
+
+  // Get wallet balance
+  async getWalletBalance(req, res) {
+    try {
+      const userId = req.user.id;
+      const query = 'SELECT wallet_amount FROM users WHERE id = $1';
+      const result = await pool.query(query, [userId]);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const walletAmount = result.rows[0].wallet_amount || 0;
+      res.json({ balance: walletAmount / 100 }); // Convert cents to euros
+    } catch (error) {
+      console.error('Error getting wallet balance:', error);
+      res.status(500).json({
+        error: 'Failed to get wallet balance',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  },
 };
 
 module.exports = userController;

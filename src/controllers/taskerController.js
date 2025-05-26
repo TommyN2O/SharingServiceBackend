@@ -478,6 +478,22 @@ const taskerController = {
       try {
         await client.query('BEGIN');
 
+        // Check for active tasks (pending, accepted, paid, or in progress)
+        const activeTasksQuery = `
+          SELECT COUNT(*) as count
+          FROM task_requests
+          WHERE tasker_id = $1
+          AND status IN ('pending', 'Waiting for Payment', 'paid')
+        `;
+        const activeTasksResult = await client.query(activeTasksQuery, [userId]);
+        
+        if (activeTasksResult.rows[0].count > 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ 
+            error: 'Cannot delete profile while having active tasks. Please complete or cancel all active tasks first.' 
+          });
+        }
+
         // Delete gallery images
         await client.query('DELETE FROM tasker_gallery WHERE tasker_id = $1', [userId]);
 

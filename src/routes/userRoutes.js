@@ -18,6 +18,9 @@ router.use(authenticateToken);
 router.get('/profile', userController.getProfile);
 router.put('/profile', uploadFields, userController.updateUserProfile);
 
+// Wallet route
+router.get('/wallet/balance', userController.getWalletBalance);
+
 // Dashboard and other routes
 router.get('/dashboard', userController.getDashboard);
 router.get('/customer-requests', userController.getCustomerRequests);
