@@ -51,6 +51,13 @@ const userController = {
         });
       }
 
+      // Validate password length
+      if (password.length < 6) {
+        return res.status(400).json({
+          error: 'Password must be at least 6 characters long'
+        });
+      }
+
       // Check if user already exists
       const existingUser = await User.getByEmail(email);
       if (existingUser) {
@@ -547,6 +554,84 @@ const userController = {
         error: 'Failed to get wallet balance',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
+    }
+  },
+
+  // Delete user account (deactivates by changing password)
+  async deleteAccount(req, res) {
+    const userId = req.user.id;
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Check for active tasks as a sender
+      const activeSentTasksQuery = `
+        SELECT COUNT(*) as count
+        FROM task_requests
+        WHERE sender_id = $1
+        AND status IN ('pending', 'Waiting for Payment', 'paid')
+      `;
+      const activeSentTasksResult = await client.query(activeSentTasksQuery, [userId]);
+
+      if (activeSentTasksResult.rows[0].count > 0) {
+        await client.query('ROLLBACK');
+        return res.sendStatus(606); // Error code for active tasks as sender
+      }
+
+      // Check if user is a tasker
+      const isTaskerQuery = 'SELECT is_tasker FROM users WHERE id = $1';
+      const isTaskerResult = await client.query(isTaskerQuery, [userId]);
+      const isTasker = isTaskerResult.rows[0]?.is_tasker;
+
+      if (isTasker) {
+        // Check for active tasks as a tasker
+        const activeTaskerTasksQuery = `
+          SELECT COUNT(*) as count
+          FROM task_requests
+          WHERE tasker_id = $1
+          AND status IN ('pending', 'Waiting for Payment', 'paid')
+        `;
+        const activeTaskerTasksResult = await client.query(activeTaskerTasksQuery, [userId]);
+
+        if (activeTaskerTasksResult.rows[0].count > 0) {
+          await client.query('ROLLBACK');
+          return res.sendStatus(605); // Error code for active tasks as tasker
+        }
+      }
+
+      // Generate a random password that nobody will know
+      const randomPassword = require('crypto').randomBytes(32).toString('hex');
+      const salt = await _bcrypt.genSalt(10);
+      const hashedPassword = await _bcrypt.hash(randomPassword, salt);
+
+      // Update user status and password
+      const updateQuery = `
+        UPDATE users 
+        SET 
+          password_hash = $1
+        WHERE id = $2
+        RETURNING id
+      `;
+      
+      const updateResult = await client.query(updateQuery, [hashedPassword, userId]);
+      
+      if (updateResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.sendStatus(500); // User not found or couldn't be updated
+      }
+
+      // Delete all active tokens for this user
+      await client.query('DELETE FROM user_tokens WHERE user_id = $1', [userId]);
+
+      await client.query('COMMIT');
+      return res.sendStatus(200); // Success code
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error deactivating user account:', error);
+      return res.sendStatus(500); // General error code
+    } finally {
+      client.release();
     }
   },
 };

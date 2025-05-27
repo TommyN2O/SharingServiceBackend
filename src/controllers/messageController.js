@@ -32,6 +32,7 @@ const messageController = {
             lm.message_id as "lastMessageId",
             lm.message as "lastMessage",
             lm.created_at as "lastMessageTime",
+            lm.sender_id as "lastMessageUserId",
             CASE 
               WHEN c.user1_id = $1 THEN json_build_object(
                 'id', u2.id,

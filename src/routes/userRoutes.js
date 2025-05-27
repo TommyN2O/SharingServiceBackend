@@ -18,6 +18,9 @@ router.use(authenticateToken);
 router.get('/profile', userController.getProfile);
 router.put('/profile', uploadFields, userController.updateUserProfile);
 
+// Account deletion route
+router.delete('/account', userController.deleteAccount);
+
 // Wallet route
 router.get('/wallet/balance', userController.getWalletBalance);
 
