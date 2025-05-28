@@ -17,6 +17,7 @@ const supportTicketRoutes = require('./routes/supportTicketRoutes');
 const openTaskRoutes = require('./routes/openTaskRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const deviceRoutes = require('./routes/deviceRoutes');
+const cronService = require('./services/cronService');
 
 const app = express();
 
@@ -206,6 +207,9 @@ async function initializeDatabase() {
 
 // Initialize database when app starts
 initializeDatabase();
+
+// Initialize cron jobs
+cronService.initializeJobs();
 
 // Root route
 app.get('/', (req, res) => {

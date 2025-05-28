@@ -731,6 +731,68 @@ class OpenTask extends BaseModel {
       client.release();
     }
   }
+
+  // Delete expired dates from open tasks
+  async deleteExpiredDates() {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Delete dates that have passed
+      const query = `
+        DELETE FROM open_task_dates
+        WHERE date < CURRENT_DATE
+        OR (date = CURRENT_DATE AND time < CURRENT_TIME)
+      `;
+      
+      const result = await client.query(query);
+      console.log(`Deleted ${result.rowCount} expired dates`);
+
+      await client.query('COMMIT');
+      return result.rowCount;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error deleting expired dates:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Delete open tasks without dates
+  async deleteOpenTasksWithoutDates() {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Find and delete open tasks that have no dates
+      const query = `
+        WITH tasks_without_dates AS (
+          SELECT ot.id
+          FROM open_tasks ot
+          LEFT JOIN open_task_dates otd ON ot.id = otd.task_id
+          WHERE ot.status = 'open'
+          GROUP BY ot.id
+          HAVING COUNT(otd.id) = 0
+        )
+        DELETE FROM open_tasks
+        WHERE id IN (SELECT id FROM tasks_without_dates)
+        RETURNING id
+      `;
+      
+      const result = await client.query(query);
+      console.log(`Deleted ${result.rowCount} open tasks without dates`);
+
+      await client.query('COMMIT');
+      return result.rowCount;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error deleting open tasks without dates:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }
 
 module.exports = OpenTask; 

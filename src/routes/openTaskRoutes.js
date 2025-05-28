@@ -82,6 +82,9 @@ router.get('/:id',
   openTaskController.getOpenTaskById
 );
 
+// Delete expired dates
+router.delete('/dates/expired', authenticateToken, openTaskController.deleteExpiredDates);
+
 // Delete open task
 router.delete('/:id', 
   authenticateToken,

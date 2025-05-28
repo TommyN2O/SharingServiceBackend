@@ -136,6 +136,7 @@ class User extends BaseModel {
         password_hash TEXT NOT NULL,
         date_of_birth DATE NOT NULL,
         is_tasker BOOLEAN DEFAULT FALSE,
+        is_deactivated BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW(),
         token_created_at TIMESTAMP DEFAULT NOW(),
         current_token TEXT,

@@ -16,6 +16,7 @@ class OpenTaskController {
     this.getTaskOffers = this.getTaskOffers.bind(this);
     this.getOfferById = this.getOfferById.bind(this);
     this.deleteOpenTask = this.deleteOpenTask.bind(this);
+    this.deleteExpiredDates = this.deleteExpiredDates.bind(this);
   }
 
   // Simple validation functions
@@ -418,6 +419,20 @@ class OpenTaskController {
     } catch (error) {
       console.error('Error deleting open task:', error);
       res.status(500).json({ error: 'Failed to delete task' });
+    }
+  }
+
+  // Delete expired dates from all open tasks
+  async deleteExpiredDates(req, res) {
+    try {
+      const deletedCount = await this.openTaskModel.deleteExpiredDates();
+      res.json({
+        message: `Successfully deleted ${deletedCount} expired dates`,
+        deletedCount
+      });
+    } catch (error) {
+      console.error('Error deleting expired dates:', error);
+      res.status(500).json({ error: 'Failed to delete expired dates' });
     }
   }
 }

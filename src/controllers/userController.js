@@ -598,6 +598,9 @@ const userController = {
           await client.query('ROLLBACK');
           return res.sendStatus(605); // Error code for active tasks as tasker
         }
+
+        // Delete tasker's availability
+        await client.query('DELETE FROM tasker_availability WHERE tasker_id IN (SELECT id FROM tasker_profiles WHERE user_id = $1)', [userId]);
       }
 
       // Generate a random password that nobody will know
@@ -609,7 +612,8 @@ const userController = {
       const updateQuery = `
         UPDATE users 
         SET 
-          password_hash = $1
+          password_hash = $1,
+          is_deactivated = true
         WHERE id = $2
         RETURNING id
       `;
