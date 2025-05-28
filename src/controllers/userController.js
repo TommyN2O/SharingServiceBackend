@@ -195,6 +195,7 @@ const userController = {
         created_at: user.created_at,
         is_tasker: user.is_tasker,
         profile_photo: user.profile_photo || '',
+        wallet_bank_iban: user.wallet_bank_iban || null
       };
       console.log('Sending response:', response);
 
@@ -229,7 +230,7 @@ const userController = {
       }
 
       // Map the fields from the request to our database fields
-      const { fullname, surname, birthdate } = userData;
+      const { fullname, surname, birthdate, wallet_bank_iban } = userData;
 
       // Get current user data
       const currentUser = await User.getById(userId);
@@ -241,6 +242,11 @@ const userController = {
         surname,
         date_of_birth: birthdate,
       };
+
+      // Add IBAN if provided
+      if (wallet_bank_iban !== undefined) {
+        updateData.wallet_bank_iban = wallet_bank_iban;
+      }
 
       // Handle profile photo if provided
       if (req.files && req.files.profile_photo) {
@@ -271,6 +277,7 @@ const userController = {
         created_at: finalUser.created_at,
         is_tasker: finalUser.is_tasker,
         profile_photo: finalUser.profile_photo || '',
+        wallet_bank_iban: finalUser.wallet_bank_iban || null
       });
     } catch (error) {
       console.error('Error updating user profile:', error);
@@ -547,7 +554,7 @@ const userController = {
       }
 
       const walletAmount = result.rows[0].wallet_amount || 0;
-      res.json({ balance: walletAmount / 100 }); // Convert cents to euros
+      res.json({ balance: walletAmount }); // Amount is already in decimal format
     } catch (error) {
       console.error('Error getting wallet balance:', error);
       res.status(500).json({

@@ -17,6 +17,7 @@ const supportTicketRoutes = require('./routes/supportTicketRoutes');
 const openTaskRoutes = require('./routes/openTaskRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const deviceRoutes = require('./routes/deviceRoutes');
+const payoutRoutes = require('./routes/payoutRoutes');
 const cronService = require('./services/cronService');
 
 const app = express();
@@ -242,6 +243,7 @@ app.use('/api/support-tickets', supportTicketRoutes);
 app.use('/api/open-tasks', openTaskRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/devices', deviceRoutes);
+app.use('/api/payout', payoutRoutes);
 
 // Regular JSON parsing for all other routes
 app.use(express.json());

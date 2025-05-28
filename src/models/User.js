@@ -19,6 +19,8 @@ class User extends BaseModel {
       await this.addCurrentTokenColumn();
       await this.addProfilePhotoColumn();
       await this.addWalletAmountColumn();
+      await this.addWalletBankIbanColumn();
+      await this.migrateWalletAmountToDecimal();
       console.log('User model initialized successfully');
     } catch (error) {
       console.error('Error initializing User model:', error);
@@ -141,7 +143,8 @@ class User extends BaseModel {
         token_created_at TIMESTAMP DEFAULT NOW(),
         current_token TEXT,
         profile_photo TEXT DEFAULT '',
-        wallet_amount INTEGER DEFAULT 0
+        wallet_amount NUMERIC(10,2) DEFAULT 0,
+        wallet_bank_iban TEXT DEFAULT NULL
       )
     `;
     await pool.query(query);
@@ -203,12 +206,31 @@ class User extends BaseModel {
           WHERE table_name = 'users' 
           AND column_name = 'wallet_amount'
         ) THEN 
-          ALTER TABLE users ADD COLUMN wallet_amount INTEGER DEFAULT 0;
+          ALTER TABLE users ADD COLUMN wallet_amount NUMERIC(10,2) DEFAULT 0;
         END IF;
       END $$;
     `;
     await pool.query(query);
     console.log('Wallet amount column added successfully');
+  }
+
+  // Add wallet_bank_iban column if it doesn't exist
+  async addWalletBankIbanColumn() {
+    const query = `
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'users' 
+          AND column_name = 'wallet_bank_iban'
+        ) THEN 
+          ALTER TABLE users ADD COLUMN wallet_bank_iban TEXT DEFAULT NULL;
+        END IF;
+      END $$;
+    `;
+    await pool.query(query);
+    console.log('Wallet bank IBAN column added successfully');
   }
 
   // Get all users (without sensitive data)
@@ -235,7 +257,8 @@ class User extends BaseModel {
   // Get user by ID
   async getById(id) {
     const query = `
-      SELECT id, name, surname, email, date_of_birth, created_at, token_created_at, current_token, is_tasker, profile_photo
+      SELECT id, name, surname, email, date_of_birth, created_at, token_created_at, 
+             current_token, is_tasker, profile_photo, wallet_bank_iban
       FROM users
       WHERE id = $1
     `;
@@ -300,7 +323,7 @@ class User extends BaseModel {
 
   // Update user
   async update(id, data) {
-    const allowedFields = ['name', 'surname', 'email', 'date_of_birth', 'is_tasker', 'token_created_at', 'current_token', 'profile_photo'];
+    const allowedFields = ['name', 'surname', 'email', 'date_of_birth', 'is_tasker', 'token_created_at', 'current_token', 'profile_photo', 'wallet_bank_iban'];
 
     // Filter out undefined values and non-allowed fields
     const updateFields = Object.entries(data)
@@ -322,7 +345,7 @@ class User extends BaseModel {
       UPDATE users
       SET ${updates}
       WHERE id = $1
-      RETURNING id, name, surname, email, date_of_birth, created_at, is_tasker, profile_photo
+      RETURNING id, name, surname, email, date_of_birth, created_at, is_tasker, profile_photo, wallet_bank_iban
     `;
 
     console.log('Update query:', query);
@@ -496,6 +519,42 @@ class User extends BaseModel {
     } catch (error) {
       throw error;
     }
+  }
+
+  // Migrate wallet_amount column to NUMERIC(10,2)
+  async migrateWalletAmountToDecimal() {
+    const query = `
+      DO $$ 
+      BEGIN 
+        -- Check if the column is not already NUMERIC(10,2)
+        IF EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'users' 
+          AND column_name = 'wallet_amount'
+          AND data_type != 'numeric'
+        ) THEN 
+          -- Create a temporary column
+          ALTER TABLE users ADD COLUMN wallet_amount_new NUMERIC(10,2);
+          
+          -- Copy data from old column to new, converting from cents to decimal
+          UPDATE users SET wallet_amount_new = CAST(wallet_amount AS NUMERIC) / 100;
+          
+          -- Drop the old column
+          ALTER TABLE users DROP COLUMN wallet_amount;
+          
+          -- Rename the new column
+          ALTER TABLE users RENAME COLUMN wallet_amount_new TO wallet_amount;
+          
+          -- Set the default value
+          ALTER TABLE users ALTER COLUMN wallet_amount SET DEFAULT 0;
+          
+          RAISE NOTICE 'Successfully migrated wallet_amount column to NUMERIC(10,2)';
+        END IF;
+      END $$;
+    `;
+    await pool.query(query);
+    console.log('Wallet amount migration completed successfully');
   }
 }
 
