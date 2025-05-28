@@ -33,12 +33,7 @@ const categoryController = {
       }
 
       console.log('Category found:', category);
-      res.status(200).json({
-        status: 'success',
-        data: {
-          category,
-        },
-      });
+      res.status(200).json(category);
     } catch (error) {
       console.error('Error getting category:', error);
       res.status(500).json({

@@ -88,14 +88,7 @@ const taskController = {
         'UPDATE customer_request_offers SET status = $1 WHERE id = $2',
         ['accepted', offerId],
       );
-
-      // Send notification message to tasker
-      await Message.create({
-        sender_id: req.user.id,
-        receiver_id: offer.rows[0].tasker_id,
-        message: 'Your offer has been accepted',
-      });
-
+      
       res.status(201).json(plannedTask);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -121,13 +114,6 @@ const taskController = {
         ['declined', offerId],
       );
 
-      // Send notification message to tasker
-      await Message.create({
-        sender_id: req.user.id,
-        receiver_id: offer.rows[0].tasker_id,
-        message: 'Your offer has been declined',
-      });
-
       res.json({ message: 'Offer declined successfully' });
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -149,13 +135,6 @@ const taskController = {
       }
 
       const updatedTask = await PlannedTask.acceptTask(taskId, false);
-
-      // Send notification message to tasker
-      await Message.create({
-        sender_id: req.user.id,
-        receiver_id: task.tasker_id,
-        message: 'Customer has accepted the task',
-      });
 
       res.json(updatedTask);
     } catch (error) {
@@ -283,14 +262,6 @@ const taskController = {
         hourly_rate,
       });
 
-      // Send notification to tasker
-      await Message.create({
-        sender_id: req.user.id,
-        receiver_id: tasker_id,
-        content: 'You have received a new task request',
-        type: 'notification',
-      });
-
       res.status(201).json(taskRequest);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -315,14 +286,6 @@ const taskController = {
 
       // Update task status
       const updatedTask = await TaskRequest.updateStatus(taskId, 'accepted');
-
-      // Send notification to customer
-      await Message.create({
-        sender_id: req.user.id,
-        receiver_id: task.sender_id,
-        content: 'Your task request has been accepted',
-        type: 'notification',
-      });
 
       res.json(updatedTask);
     } catch (error) {

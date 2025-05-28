@@ -149,7 +149,11 @@ class OpenTask extends BaseModel {
         ot.*,
         c.id as category_id,
         c.name as category_name,
-        json_agg(DISTINCT otp.photo_url) as photos,
+        (
+          SELECT json_agg(DISTINCT photo_url)
+          FROM open_task_photos
+          WHERE task_id = ot.id
+        ) as photos,
         json_agg(DISTINCT jsonb_build_object(
           'date', otd.date,
           'time', otd.time
@@ -170,7 +174,6 @@ class OpenTask extends BaseModel {
         u.surname as creator_surname
       FROM open_tasks ot
       LEFT JOIN categories c ON ot.category_id = c.id
-      LEFT JOIN open_task_photos otp ON ot.id = otp.task_id
       LEFT JOIN open_task_dates otd ON ot.id = otd.task_id
       LEFT JOIN open_task_offers oto ON ot.id = oto.task_id
       LEFT JOIN cities ci ON ot.location_id = ci.id
@@ -325,7 +328,7 @@ class OpenTask extends BaseModel {
       creator: row.creator,
       availability: Array.isArray(row.availability) ? row.availability : [],
       gallery: Array.isArray(row.gallery) ? 
-        row.gallery.map(path => path.replace(/\\/g, '/')) : []
+        [...new Set(row.gallery.map(path => path.replace(/\\/g, '/')))] : []
     }));
   }
 
@@ -422,6 +425,9 @@ class OpenTask extends BaseModel {
         ['assigned', offer.task_id]
       );
 
+      // Delete the accepted offer
+      await client.query('DELETE FROM open_task_offers WHERE id = $1', [offer.offer_id]);
+
       // Get the exact hourly rate from the offer
       const offerRateQuery = `
         SELECT hourly_rate 
@@ -515,8 +521,8 @@ class OpenTask extends BaseModel {
         offer.tasker_id,
         {
           id: taskRequestResult.rows[0].id.toString(),
-          title: '✅ Offer Accepted',
-          description: `Your offer has been accepted by ${creator.name} ${creator.surname[0]}.`,
+          title: '✅ Pasiūlymas priimtas',
+          description: `${creator.name} ${creator.surname[0]}. priėmė jūsų pasiūlymą.`,
           type: 'offer_accepted'
         }
       );
@@ -592,9 +598,6 @@ class OpenTask extends BaseModel {
         id: completeTask.rows[0].id,
         tasker: completeTask.rows[0].tasker
       });
-
-      // Delete all offers for this task since one was accepted
-      await client.query('DELETE FROM open_task_offers WHERE task_id = $1', [offer.task_id]);
 
       await client.query('COMMIT');
       return completeTask.rows[0];

@@ -89,8 +89,8 @@ const reviewController = {
         taskRequest.tasker_id,
         {
           id: task_request_id.toString(),
-          title: '⭐ New Review',
-          description: `${reviewer.name} ${reviewer.surname[0]}. has left you a review`,
+          title: '⭐ Naujas atsiliepimas',
+          description: `${reviewer.name} ${reviewer.surname[0]}. paliko jums atsiliepimą`,
           type: 'new_review'
         }
       );

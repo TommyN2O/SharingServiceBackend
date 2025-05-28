@@ -306,8 +306,9 @@ class Payment extends BaseModel {
           tasker_id,
           {
             id: taskRequestId.toString(),
-            title: '💰 Received Payment',
-            description: `Payment from ${sender.name} ${sender.surname[0]}. has been added to your wallet`,
+            title: '💰 Gautas mokėjimas',
+            description: `Mokėjimas nuo ${sender.name} ${sender.surname[0]}. pridėtas į jūsų skaitmeninę piniginę`,
+          
             type: 'payment_completed'
           }
         );

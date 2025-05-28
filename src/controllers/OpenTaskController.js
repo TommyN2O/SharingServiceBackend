@@ -286,8 +286,8 @@ class OpenTaskController {
         creator_id,
         {
           id: taskId.toString(),
-          title: '📋 New Offer Received',
-          description: `${name} ${surname[0]}. has sent an offer for your open task.`,
+          title: '📋 Gautas naujas pasiūlymas',
+          description: `${name} ${surname[0]}. pateikė pasiūlymą jūsų atvirai užklausai.`,
           type: 'new_offer'
         }
       );

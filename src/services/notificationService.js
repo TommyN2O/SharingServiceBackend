@@ -27,7 +27,7 @@ class NotificationService {
         }
 
         const senderName = `${sender.name} ${sender.surname[0]}.`;
-        const notificationTitle = `New message from ${senderName}`;
+        const notificationTitle = `Nauja žinutė nuo ${senderName}`;
         const notificationBody = message.length > 100 ? message.substring(0, 97) + '...' : message;
 
         // Send notification to each device

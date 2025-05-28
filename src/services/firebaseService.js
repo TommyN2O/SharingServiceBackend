@@ -116,7 +116,7 @@ class FirebaseService {
         }
 
         const notification = {
-          title: `New message from ${sender.name} ${sender.surname}`,
+          title: `Nauja žinutė nuo ${sender.name} ${sender.surname}`,
           body: message.length > 100 ? message.substring(0, 97) + '...' : message
         };
 

@@ -187,11 +187,14 @@ class TaskRequest extends BaseModel {
         // Get the payment record
         const payment = await Payment.getByTaskRequestId(taskId);
         if (!payment) {
-          throw new Error('Payment record not found');
+          throw new Error('Mokėjimo įrašas nerastas');
         }
 
         // Update payment status to completed
         await Payment.updateStatusToCompleted(taskId);
+
+        // Delete offers if this was from an open task
+        await TaskRequest.deleteOffersForCompletedTask(taskId);
       }
 
       await client.query('COMMIT');
@@ -201,6 +204,30 @@ class TaskRequest extends BaseModel {
       throw error;
     } finally {
       client.release();
+    }
+  }
+
+  // Delete offers for a completed task that originated from an open task
+  static async deleteOffersForCompletedTask(taskRequestId) {
+    const client = await pool.connect();
+    try {
+      // Check if the task request was from an open task
+      const taskQuery = `
+        SELECT open_task_id, is_open_task
+        FROM task_requests
+        WHERE id = $1 AND is_open_task = true
+      `;
+      const taskResult = await client.query(taskQuery, [taskRequestId]);
+      
+      // If this was from an open task, delete all offers for that open task
+      if (taskResult.rows.length > 0 && taskResult.rows[0].open_task_id) {
+        const openTaskId = taskResult.rows[0].open_task_id;
+        await client.query('DELETE FROM open_task_offers WHERE task_id = $1', [openTaskId]);
+        console.log(`Ištrinti visi pasiūlymai užbaigtam atviram užsakymui ${openTaskId}`);
+      }
+    } catch (error) {
+      console.error('Klaida trinant pasiūlymus užbaigtam užsakymui:', error);
+      throw error;
     }
   }
 }

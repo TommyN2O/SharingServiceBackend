@@ -900,8 +900,8 @@ const taskerController = {
         taskerUserId,
         {
           id: taskRequestId.toString(),
-          title: '📋 New Task Request',
-          description: `New task request in ${city.name} for ${categories.map(cat => cat.name).join(', ')}`,
+          title: '📋 Nauja užklausa',
+          description: `Nauja darbo užklausa ${city.name} mieste: ${categories.map(cat => cat.name).join(', ')}`,
           type: 'new_task',
           categories: JSON.stringify(categories.map(cat => ({ id: cat.id.toString(), name: cat.name }))),
           city: JSON.stringify({ id: city.id.toString(), name: city.name })
@@ -1612,8 +1612,8 @@ const taskerController = {
             taskRequest.sender_id,
             {
               id: id.toString(),
-              title: '✅ Task Accepted',
-              description: `${tasker.name} ${tasker.surname[0]}. has accepted your task request. Please proceed with payment.`,
+              title: '✅ Užklausa priimta',
+              description: `${tasker.name} ${tasker.surname[0]}. priėmė jūsų užklausą. Prašome atlikti mokėjimą.`,
               type: 'waiting_for_payment'
             }
           );
@@ -1624,8 +1624,8 @@ const taskerController = {
             taskRequest.sender_id,
             {
               id: id.toString(),
-              title: '❌ Task Declined',
-              description: `${tasker.name} ${tasker.surname[0]}. has declined your task request.`,
+              title: '❌ Užklausa atmestas',
+              description: `${tasker.name} ${tasker.surname[0]}. atmetė jūsų užklausą.`,
               type: 'task_declined'
             }
           );
@@ -1636,8 +1636,8 @@ const taskerController = {
             taskRequest.sender_id,
             {
               id: id.toString(),
-              title: '✅ Task Completed',
-              description: `${tasker.name} ${tasker.surname[0]}. has marked your task as completed.`,
+              title: '✅ Darbas užbaigtas',
+              description: `${tasker.name} ${tasker.surname[0]}. pažymėjo jūsų užklausą kaip užbaigtą.`,
               type: 'task_completed'
             }
           );
@@ -1658,8 +1658,8 @@ const taskerController = {
               taskRequest.sender_id,
               {
                 id: id.toString(),
-                title: '❌ Task Canceled',
-                description: `${canceler.name} ${canceler.surname[0]}. has canceled your task request.`,
+                title: '❌ Užklausa atšaukta',
+                description: `${canceler.name} ${canceler.surname[0]}. atšaukė užklausą.`,
                 type: 'task_canceled'
               }
             );
@@ -1699,8 +1699,8 @@ const taskerController = {
               taskRequest.tasker_id,
               {
                 id: id.toString(),
-                title: '❌ Task Canceled',
-                description: `Task has been canceled by ${sender.name} ${sender.surname[0]}.`,
+                title: '❌ Užklausa atšaukta',
+                description: `Užklausa buvo atšaukta klientu ${sender.name} ${sender.surname[0]}.`,
                 type: 'task_canceled'
               }
             );
@@ -1779,8 +1779,8 @@ const taskerController = {
               taskRequest.tasker_id,
               {
                 id: id.toString(),
-                title: '❌ Task Canceled',
-                description: `Task with ${sender.name} ${sender.surname[0]}. has been canceled.`,
+                title: '❌ Užklausa atšaukta',
+                description: `${sender.name} ${sender.surname[0]}. užklausa buvo atšauktas.`,
                 type: 'task_canceled'
               }
             );
@@ -1791,8 +1791,8 @@ const taskerController = {
               taskRequest.sender_id,
               {
                 id: id.toString(),
-                title: '❌ Task Canceled',
-                description: `Your task with ${tasker.name} ${tasker.surname[0]}. has been canceled.`,
+                title: '❌ Užklausa atšaukta',
+                description: `Jūsų užklausa su ${tasker.name} ${tasker.surname[0]}. buvo atšaukta.`,
                 type: 'task_canceled'
               }
             );
@@ -1803,8 +1803,8 @@ const taskerController = {
               taskRequest.sender_id,
               {
                 id: openTaskResult.rows[0].id.toString(),
-                title: '📋 Task Now Open',
-                description: `Task is now available for all taskers.`,
+                title: '📋 Atvira užklausa',
+                description: `Užklausa dabar prieinama visiems paslaugų teikėjams.`,
                 type: 'task_open'
               }
             );
@@ -1871,8 +1871,8 @@ const taskerController = {
               taskRequest.tasker_id,
               {
                 id: id.toString(),
-                title: '❌ Planned Task Canceled',
-                description: `Planned Task with ${sender.name} ${sender.surname[0]}. has been canceled.`,
+                title: '❌ Suplanuotas darbas atšauktas',
+                description: `Suplanuotas darbas pas ${sender.name} ${sender.surname[0]}. buvo atšauktas.`,
                 type: 'task_canceled'
               }
             );
@@ -1883,8 +1883,8 @@ const taskerController = {
               taskRequest.sender_id,
               {
                 id: id.toString(),
-                title: '❌ Planned Task Canceled',
-                description: `Your planned task with ${tasker.name} ${tasker.surname[0]}. has been canceled.`,
+                title: '❌ Suplanuotas darbas atšauktas',
+                description: `Jūsų suplanuotas darbas su ${tasker.name} ${tasker.surname[0]}. buvo atšauktas.`,
                 type: 'task_canceled'
               }
             );
@@ -1895,8 +1895,8 @@ const taskerController = {
               taskRequest.sender_id,
               {
                 id: id.toString(),
-                title: '💰 Payment Refunded',
-                description: `The payment for your canceled task has been refunded to your wallet.`,
+                title: '💰 Mokėjimas grąžintas',
+                description: `Mokėjimas už atšauktą užsakymą buvo grąžintas į jūsų skaitmeninę piniginę.`,
                 type: 'payment_refunded'
               }
             );
@@ -1907,8 +1907,8 @@ const taskerController = {
               taskRequest.sender_id,
               {
                 id: openTaskResult.rows[0].id.toString(),
-                title: '📋 Task Now Open',
-                description: `Your task is now visible to all taskers and available for new offers.`,
+                title: '📋 Atvira užklausa',
+                description: `Užklausa dabar prieinama visiems paslaugų teikėjams.`,
                 type: 'task_open'
               }
             );
@@ -1957,8 +1957,8 @@ const taskerController = {
               taskRequest.tasker_id,
               {
                 id: id.toString(),
-                title: '❌ Planned Task Canceled',
-                description: `Planned task has been canceled by ${sender.name} ${sender.surname[0]}.`,
+                title: '❌ Suplanuotas darbas atšauktas',
+                description: `Suplanuotas darbas pas ${sender.name} ${sender.surname[0]}. buvo atšauktas.`,
                 type: 'task_canceled'
               }
             );
@@ -1969,8 +1969,8 @@ const taskerController = {
               taskRequest.sender_id,
               {
                 id: id.toString(),
-                title: '❌ Planned Task Canceled',
-                description: `Your planned task with ${tasker.name} ${tasker.surname[0]}. has been canceled. The payment will be refunded to your wallet.`,
+                title: '❌ Suplanuotas darbas atšauktas',
+                description: `Jūsų suplanuotas darbas su ${tasker.name} ${tasker.surname[0]}. buvo atšauktas.`,
                 type: 'task_canceled'
               }
             );
@@ -1981,21 +1981,9 @@ const taskerController = {
               taskRequest.sender_id,
               {
                 id: id.toString(),
-                title: '💰 Payment Refunded',
-                description: `The payment for your canceled task has been refunded to your wallet.`,
+                title: '💰 Mokėjimas grąžintas',
+                description: `Mokėjimas už atšauktą darbą buvo grąžintas į jūsų skaitmeninę piniginę.`,
                 type: 'payment_refunded'
-              }
-            );
-
-            // Send notification to sender about task being open
-            await FirebaseService.sendTaskRequestNotification(
-              taskRequest.tasker_id,
-              taskRequest.sender_id,
-              {
-                id: openTaskResult.rows[0].id.toString(),
-                title: '📋 Task Now Open',
-                description: `Your task is now visible to all taskers and available for new offers.`,
-                type: 'task_open'
               }
             );
             
@@ -2044,8 +2032,8 @@ const taskerController = {
             taskRequest.tasker_id,
             {
               id: id.toString(),
-              title: '❌ Task Canceled',
-              description: `Task request has been canceled by ${sender.name} ${sender.surname[0]}.`,
+              title: '❌ Užklausa atšaukta',
+              description: `Užklausa atšaukta klientu ${sender.name} ${sender.surname[0]}.`,
               type: 'task_canceled'
             }
           );
