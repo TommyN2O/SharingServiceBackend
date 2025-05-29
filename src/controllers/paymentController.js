@@ -44,20 +44,19 @@ const paymentController = {
             return res.status(404).json({ error: 'User not found' });
           }
 
-          const walletAmount = userResult.rows[0].wallet_amount || 0;
-          const amountInCents = Math.round(amount * 100);
+          const walletAmount = parseFloat(userResult.rows[0].wallet_amount) || 0;
 
-          // Check if wallet has enough funds
-          if (walletAmount < amountInCents) {
+          // Check if wallet has enough funds (using direct decimal comparison)
+          if (walletAmount < amount) {
             return res.status(400).json({
               error: 'Insufficient funds in wallet',
-              required: amountInCents / 100,
-              available: walletAmount / 100,
+              required: amount,
+              available: walletAmount,
             });
           }
 
-          // Deduct amount from wallet
-          const newWalletAmount = walletAmount - amountInCents;
+          // Deduct amount from wallet (using direct decimal arithmetic)
+          const newWalletAmount = walletAmount - amount;
           await client.query(
             'UPDATE users SET wallet_amount = $1 WHERE id = $2',
             [newWalletAmount, req.user.id],
@@ -66,8 +65,8 @@ const paymentController = {
           // Add amount to tasker's wallet
           const taskerQuery = 'SELECT wallet_amount FROM users WHERE id = $1';
           const taskerResult = await client.query(taskerQuery, [taskRequest.tasker_id]);
-          const taskerWalletAmount = taskerResult.rows[0].wallet_amount || 0;
-          const newTaskerWalletAmount = taskerWalletAmount + amountInCents;
+          const taskerWalletAmount = parseFloat(taskerResult.rows[0].wallet_amount) || 0;
+          const newTaskerWalletAmount = taskerWalletAmount + amount;
           await client.query(
             'UPDATE users SET wallet_amount = $1 WHERE id = $2',
             [newTaskerWalletAmount, taskRequest.tasker_id],
@@ -121,7 +120,7 @@ const paymentController = {
           return res.json({
             success: true,
             message: 'Payment completed successfully using wallet',
-            remaining_balance: newWalletAmount / 100,
+            remaining_balance: newWalletAmount,
           });
         } catch (error) {
           await client.query('ROLLBACK');
@@ -407,58 +406,56 @@ const paymentController = {
     try {
       await client.query('BEGIN');
 
-      // Get the pending payment details
-      const pendingPaymentQuery = `
-        SELECT * FROM pending_payments
-        WHERE task_request_id = $1
+      // Get task request details
+      const taskQuery = `
+        SELECT sender_id, tasker_id
+        FROM task_requests
+        WHERE id = $1
       `;
-      const pendingPaymentResult = await client.query(pendingPaymentQuery, [taskId]);
+      const taskResult = await client.query(taskQuery, [taskId]);
       
-      if (!pendingPaymentResult.rows.length) {
-        throw new Error('No pending payment found for this task');
+      if (!taskResult.rows.length) {
+        throw new Error('Task request not found');
       }
 
-      const pendingPayment = pendingPaymentResult.rows[0];
-      const amountInCents = Math.round(pendingPayment.amount * 100);
+      const { sender_id, tasker_id } = taskResult.rows[0];
 
-      // Update sender's payment status to completed
+      // Get tasker's payment record to find the amount
+      const taskerPaymentQuery = `
+        SELECT amount 
+        FROM payments 
+        WHERE task_request_id = $1 
+        AND user_id = $2 
+        AND is_payment = false
+      `;
+      const taskerPaymentResult = await client.query(taskerPaymentQuery, [taskId, tasker_id]);
+
+      if (!taskerPaymentResult.rows.length) {
+        throw new Error('Tasker payment record not found');
+      }
+
+      const taskerAmount = taskerPaymentResult.rows[0].amount;
+
+      // Update both payment records to completed
       await client.query(`
         UPDATE payments 
-        SET status = 'completed'
+        SET status = 'completed' 
         WHERE task_request_id = $1 
-        AND is_payment = true
-      `, [taskId]);
+        AND (user_id = $2 OR user_id = $3)
+      `, [taskId, sender_id, tasker_id]);
 
       // Add amount to tasker's wallet
-      const taskerQuery = 'SELECT wallet_amount FROM users WHERE id = $1';
-      const taskerResult = await client.query(taskerQuery, [pendingPayment.tasker_id]);
-      const taskerWalletAmount = taskerResult.rows[0].wallet_amount || 0;
-      const newTaskerWalletAmount = taskerWalletAmount + amountInCents;
-      
-      await client.query(
-        'UPDATE users SET wallet_amount = $1 WHERE id = $2',
-        [newTaskerWalletAmount, pendingPayment.tasker_id],
-      );
-
-      // Create payment record for tasker
-      await Payment.createPayment({
-        task_request_id: taskId,
-        amount: pendingPayment.amount,
-        currency: 'EUR',
-        stripe_session_id: pendingPayment.stripe_session_id,
-        stripe_payment_intent_id: pendingPayment.stripe_payment_intent_id,
-        status: 'completed',
-        user_id: pendingPayment.tasker_id,
-        is_payment: false,
-      });
-
-      // Remove the pending payment record
-      await client.query('DELETE FROM pending_payments WHERE task_request_id = $1', [taskId]);
+      await client.query(`
+        UPDATE users 
+        SET wallet_amount = COALESCE(wallet_amount, 0) + $1 
+        WHERE id = $2
+      `, [taskerAmount, tasker_id]);
 
       await client.query('COMMIT');
-      console.log(`Payment completed for task ${taskId}`);
+      return { success: true, message: 'Payment completed successfully' };
     } catch (error) {
       await client.query('ROLLBACK');
+      console.error('Error handling payment completion:', error);
       throw error;
     } finally {
       client.release();

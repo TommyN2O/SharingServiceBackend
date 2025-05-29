@@ -2776,9 +2776,9 @@ const taskerController = {
     const client = await pool.connect();
 
     try {
-      // First get the user's wallet amount
+      // First get the user's wallet amount and IBAN
       const userQuery = `
-        SELECT wallet_amount 
+        SELECT wallet_amount, wallet_bank_iban
         FROM users 
         WHERE id = $1
       `;
@@ -2830,6 +2830,7 @@ const taskerController = {
       // Format the response
       const response = {
         wallet_amount: userResult.rows[0].wallet_amount || 0,
+        wallet_bank_iban: userResult.rows[0].wallet_bank_iban || null,
         transactions: transactionsResult.rows.map((row) => ({
           payment_id: row.payment_id,
           amount: row.payment_status === 'refunded' ? 
