@@ -14,7 +14,7 @@ class UserDevice {
       `;
       console.log('Executing query:', query);
       console.log('Query parameters:', [userId, deviceToken]);
-      
+
       const result = await client.query(query, [userId, deviceToken]);
       console.log('Query result:', result.rows[0]);
       return result.rows[0];
@@ -37,7 +37,7 @@ class UserDevice {
       `;
       const result = await client.query(query, [userId]);
       console.log('Found device tokens:', result.rows);
-      return result.rows.map(row => row.device_token);
+      return result.rows.map((row) => row.device_token);
     } catch (error) {
       console.error('Error getting device tokens:', error);
       throw error;
@@ -86,4 +86,4 @@ class UserDevice {
   }
 }
 
-module.exports = UserDevice; 
+module.exports = UserDevice;

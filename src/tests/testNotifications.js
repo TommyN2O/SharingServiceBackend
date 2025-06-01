@@ -27,12 +27,12 @@ async function testNotifications() {
     console.log('\n3️⃣ Sending test notification...');
     const notification = {
       title: '🎉 Test Notification',
-      body: 'This is a test notification from the Sharing Service Backend!'
+      body: 'This is a test notification from the Sharing Service Backend!',
     };
 
     const data = {
       type: 'test',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     const result = await FirebaseService.sendNotificationToUser(testUserId, notification, data);
@@ -43,7 +43,7 @@ async function testNotifications() {
     const chatResult = await FirebaseService.sendChatMessageNotification(
       1, // sender ID (can be any existing user ID)
       testUserId, // receiver ID
-      'Hey there! This is a test chat message 💬'
+      'Hey there! This is a test chat message 💬',
     );
     console.log('✅ Chat notification result:', chatResult);
 
@@ -68,4 +68,4 @@ testNotifications()
   .catch((error) => {
     console.error('\n💥 Test script failed:', error);
     process.exit(1);
-  }); 
+  });

@@ -218,7 +218,7 @@ class TaskRequest extends BaseModel {
         WHERE id = $1 AND is_open_task = true
       `;
       const taskResult = await client.query(taskQuery, [taskRequestId]);
-      
+
       // If this was from an open task, delete all offers for that open task
       if (taskResult.rows.length > 0 && taskResult.rows[0].open_task_id) {
         const openTaskId = taskResult.rows[0].open_task_id;

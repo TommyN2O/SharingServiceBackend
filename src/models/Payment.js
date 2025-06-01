@@ -136,7 +136,7 @@ class Payment extends BaseModel {
       `;
       const existingPayment = await client.query(existingPaymentQuery, [
         taskRequestId,
-        `%${data.stripe_session_id}%`
+        `%${data.stripe_session_id}%`,
       ]);
 
       if (existingPayment.rows.length > 0) {
@@ -151,7 +151,7 @@ class Payment extends BaseModel {
         WHERE id = $1
       `;
       const taskResult = await client.query(taskQuery, [taskRequestId]);
-      
+
       if (!taskResult.rows.length) {
         throw new Error('Task request not found');
       }
@@ -180,12 +180,12 @@ class Payment extends BaseModel {
       await client.query(senderPaymentQuery, [
         taskRequestId,
         sender_id,
-        Math.abs(amount)*-1,
+        Math.abs(amount) * -1,
         data.currency || 'EUR',
         senderSessionId,
         data.stripe_payment_intent_id,
         'on hold',
-        true
+        true,
       ]);
 
       // Create tasker's payment record (pending)
@@ -213,7 +213,7 @@ class Payment extends BaseModel {
         taskerSessionId,
         data.stripe_payment_intent_id,
         'pending',
-        false
+        false,
       ]);
 
       await client.query('COMMIT');
@@ -251,7 +251,7 @@ class Payment extends BaseModel {
           WHERE id = $1
         `;
         const taskResult = await client.query(taskQuery, [taskRequestId]);
-        
+
         if (!taskResult.rows.length) {
           throw new Error('Task request not found');
         }
@@ -308,9 +308,9 @@ class Payment extends BaseModel {
             id: taskRequestId.toString(),
             title: '💰 Gautas mokėjimas',
             description: `Mokėjimas nuo ${sender.name} ${sender.surname[0]}. pridėtas į jūsų skaitmeninę piniginę`,
-          
-            type: 'payment_completed'
-          }
+
+            type: 'payment_completed',
+          },
         );
 
         await client.query('COMMIT');
@@ -353,7 +353,7 @@ class Payment extends BaseModel {
         AND p.status NOT IN ('refunded', 'canceled')
       `;
       const paymentsResult = await client.query(paymentsQuery, [taskId]);
-      
+
       console.log('Found payments for task:', taskId, paymentsResult.rows);
 
       if (paymentsResult.rows.length === 0) {
@@ -362,8 +362,8 @@ class Payment extends BaseModel {
       }
 
       // Find sender's payment (is_payment = true) and tasker's payment (is_payment = false)
-      const senderPayment = paymentsResult.rows.find(p => p.is_payment === true);
-      const taskerPayment = paymentsResult.rows.find(p => p.is_payment === false);
+      const senderPayment = paymentsResult.rows.find((p) => p.is_payment === true);
+      const taskerPayment = paymentsResult.rows.find((p) => p.is_payment === false);
 
       if (!senderPayment) {
         console.log('No sender payment found for task:', taskId);

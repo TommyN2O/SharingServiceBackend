@@ -14,7 +14,7 @@ try {
       console.error('Error parsing FIREBASE_SERVICE_ACCOUNT environment variable:', parseError);
     }
   }
-  
+
   // If not in env, try to get from local file
   if (!serviceAccount) {
     const serviceAccountPath = path.join(__dirname, '..', 'bdnesthelper-firebase-adminsdk-fbsvc-aa3c8321f8.json');
@@ -29,7 +29,7 @@ try {
 // Initialize the admin SDK
 try {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert(serviceAccount),
   });
   console.log('Firebase Admin SDK initialized successfully');
 } catch (error) {

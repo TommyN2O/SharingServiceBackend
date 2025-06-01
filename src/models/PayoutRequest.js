@@ -103,4 +103,4 @@ class PayoutRequest extends BaseModel {
   }
 }
 
-module.exports = new PayoutRequest(); 
+module.exports = new PayoutRequest();

@@ -26,14 +26,8 @@ router.get('/wallet/balance', userController.getWalletBalance);
 
 // Dashboard and other routes
 router.get('/dashboard', userController.getDashboard);
-router.get('/customer-requests', userController.getCustomerRequests);
 router.get('/messages', userController.getMessages);
 router.get('/messages/:userId', userController.getConversation);
-
-// Saved taskers routes
-router.get('/saved-taskers', userController.getSavedTaskers);
-router.post('/save-tasker/:taskerId', userController.saveTasker);
-router.delete('/saved-tasker/:taskerId', userController.removeSavedTasker);
 
 // Complete user data route
 router.get('/complete/:id', userController.getUserCompleteData);

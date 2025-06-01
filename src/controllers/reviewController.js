@@ -1,6 +1,6 @@
+const { validationResult } = require('express-validator');
 const Review = require('../models/Review');
 const TaskRequest = require('../models/TaskRequest');
-const { validationResult } = require('express-validator');
 const pool = require('../config/database');
 
 const reviewController = {
@@ -68,7 +68,7 @@ const reviewController = {
         reviewer_id,
         reviewee_id: taskRequest.tasker_id,
         rating,
-        review
+        review,
       };
 
       const newReview = await Review.createReview(reviewData);
@@ -91,8 +91,8 @@ const reviewController = {
           id: task_request_id.toString(),
           title: '⭐ Naujas atsiliepimas',
           description: `${reviewer.name} ${reviewer.surname[0]}. paliko jums atsiliepimą`,
-          type: 'new_review'
-        }
+          type: 'new_review',
+        },
       );
 
       res.status(201).json(newReview);
@@ -176,11 +176,11 @@ const reviewController = {
     try {
       const { taskRequestId } = req.params;
       const review = await Review.findByTaskRequestId(taskRequestId);
-      
+
       if (!review) {
         return res.status(404).json({ message: 'Review not found' });
       }
-      
+
       res.json(review);
     } catch (error) {
       console.error('Error fetching task review:', error);
@@ -198,7 +198,7 @@ const reviewController = {
       console.error('Error checking review status:', error);
       res.status(500).json({ message: 'Error checking review status' });
     }
-  }
+  },
 };
 
 module.exports = reviewController;

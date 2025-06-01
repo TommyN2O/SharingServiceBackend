@@ -78,7 +78,7 @@ const paymentController = {
           // Create payment records (this will create both sender and tasker records)
           await Payment.createPayment({
             task_request_id: task_id,
-            amount: amount,
+            amount,
             currency: 'EUR',
             stripe_session_id: sessionId,
             stripe_payment_intent_id: null,
@@ -90,7 +90,7 @@ const paymentController = {
           // Update task status to paid
           await client.query(
             'UPDATE task_requests SET status = $1 WHERE id = $2',
-            ['paid', task_id]
+            ['paid', task_id],
           );
 
           // Get sender's name for notification
@@ -110,9 +110,9 @@ const paymentController = {
             {
               id: task_id.toString(),
               title: `📋 Task request from ${sender.name} ${sender.surname[0]}.`,
-              description: `Task has been added to planned tasks`,
-              type: 'status_update'
-            }
+              description: 'Task has been added to planned tasks',
+              type: 'status_update',
+            },
           );
 
           await client.query('COMMIT');
@@ -172,7 +172,7 @@ const paymentController = {
   // Handle success redirect
   async handleSuccess(req, res) {
     const { session_id } = req.query;
-    
+
     if (!session_id) {
       console.error('No session_id provided in success redirect');
       return res.redirect('sharingapp://payment-error');
@@ -181,7 +181,7 @@ const paymentController = {
     try {
       // Verify the session and get task_id from metadata
       const session = await stripe.checkout.sessions.retrieve(session_id);
-      
+
       if (!session || session.status !== 'complete') {
         console.error('Invalid or incomplete session:', session_id);
         return res.redirect('sharingapp://payment-error');
@@ -225,7 +225,7 @@ const paymentController = {
   // Handle cancel redirect
   async handleCancel(req, res) {
     const { task_id } = req.query;
-    
+
     if (!task_id) {
       console.error('No task_id provided in cancel redirect');
       return res.redirect('sharingapp://payment-error');
@@ -342,7 +342,7 @@ const paymentController = {
             // Create payment records
             const paymentData = {
               task_request_id: taskId,
-              amount: amount,
+              amount,
               currency: 'EUR',
               stripe_session_id: session.id,
               stripe_payment_intent_id: session.payment_intent,
@@ -350,13 +350,13 @@ const paymentController = {
 
             const result = await Payment.createPayment(paymentData);
             console.log(result.message);
-            
+
             // Only update task status if new payments were created
             if (result.message === 'Payments created successfully') {
               // Update task request status to 'paid'
               await pool.query(
                 'UPDATE task_requests SET status = $1 WHERE id = $2',
-                ['paid', taskId]
+                ['paid', taskId],
               );
 
               // Get sender's name for notification
@@ -376,9 +376,9 @@ const paymentController = {
                 {
                   id: taskId,
                   title: `📋 Suplanuotas darbas pas ${sender.name} ${sender.surname[0]}.`,
-                  description: `Užklausa pridėta prie suplanuotų darbų`,
-                  type: 'status_update'
-                }
+                  description: 'Užklausa pridėta prie suplanuotų darbų',
+                  type: 'status_update',
+                },
               );
             }
           } catch (error) {
@@ -413,7 +413,7 @@ const paymentController = {
         WHERE id = $1
       `;
       const taskResult = await client.query(taskQuery, [taskId]);
-      
+
       if (!taskResult.rows.length) {
         throw new Error('Task request not found');
       }

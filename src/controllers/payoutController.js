@@ -87,7 +87,7 @@ const payoutController = {
       const payoutRequests = await PayoutRequest.getPayoutRequestsByUser(userId);
 
       // Format amounts from cents to euros
-      const formattedPayoutRequests = payoutRequests.map(request => ({
+      const formattedPayoutRequests = payoutRequests.map((request) => ({
         ...request,
         amount: request.amount / 100,
       }));
@@ -106,4 +106,4 @@ const payoutController = {
   },
 };
 
-module.exports = payoutController; 
+module.exports = payoutController;

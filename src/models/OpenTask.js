@@ -96,7 +96,7 @@ class OpenTask extends BaseModel {
         creator_id,
         category_id,
         photos,
-        dates // Array of {date, time} objects
+        dates, // Array of {date, time} objects
       } = data;
 
       // Insert the open task
@@ -108,7 +108,7 @@ class OpenTask extends BaseModel {
         RETURNING *
       `;
       const taskResult = await client.query(taskQuery, [
-        description, budget, duration, location_id, creator_id, category_id
+        description, budget, duration, location_id, creator_id, category_id,
       ]);
       const task = taskResult.rows[0];
 
@@ -117,7 +117,7 @@ class OpenTask extends BaseModel {
         for (const photoUrl of photos) {
           await client.query(
             'INSERT INTO open_task_photos (task_id, photo_url) VALUES ($1, $2)',
-            [task.id, photoUrl]
+            [task.id, photoUrl],
           );
         }
       }
@@ -127,7 +127,7 @@ class OpenTask extends BaseModel {
         for (const { date, time } of dates) {
           await client.query(
             'INSERT INTO open_task_dates (task_id, date, time) VALUES ($1, $2, $3)',
-            [task.id, date, time]
+            [task.id, date, time],
           );
         }
       }
@@ -195,7 +195,7 @@ class OpenTask extends BaseModel {
       maxBudget,
       duration,
       excludeUserId,
-      status = 'open'
+      status = 'open',
     } = filters;
 
     let query = `
@@ -315,8 +315,8 @@ class OpenTask extends BaseModel {
     console.log('Final parameters:', params);
 
     const result = await pool.query(query, params);
-    
-    return result.rows.map(row => ({
+
+    return result.rows.map((row) => ({
       id: row.id,
       description: row.description,
       budget: row.budget,
@@ -327,8 +327,8 @@ class OpenTask extends BaseModel {
       category: row.category,
       creator: row.creator,
       availability: Array.isArray(row.availability) ? row.availability : [],
-      gallery: Array.isArray(row.gallery) ? 
-        [...new Set(row.gallery.map(path => path.replace(/\\/g, '/')))] : []
+      gallery: Array.isArray(row.gallery)
+        ? [...new Set(row.gallery.map((path) => path.replace(/\\/g, '/')))] : [],
     }));
   }
 
@@ -341,7 +341,7 @@ class OpenTask extends BaseModel {
       hourly_rate,
       duration,
       preferred_date,
-      preferred_time
+      preferred_time,
     } = data;
 
     const query = `
@@ -359,7 +359,7 @@ class OpenTask extends BaseModel {
       hourly_rate,
       duration,
       preferred_date,
-      preferred_time
+      preferred_time,
     ]);
     return result.rows[0];
   }
@@ -410,19 +410,19 @@ class OpenTask extends BaseModel {
         hourly_rate: offer.hourly_rate,
         duration: offer.offer_duration,
         date: offer.offer_date,
-        time: offer.offer_time
+        time: offer.offer_time,
       });
 
       // Update offer status
       await client.query(
         'UPDATE open_task_offers SET status = $1 WHERE id = $2',
-        ['accepted', offer.offer_id]
+        ['accepted', offer.offer_id],
       );
 
       // Update task status
       await client.query(
         'UPDATE open_tasks SET status = $1 WHERE id = $2',
-        ['assigned', offer.task_id]
+        ['assigned', offer.task_id],
       );
 
       // Delete the accepted offer
@@ -454,15 +454,15 @@ class OpenTask extends BaseModel {
         RETURNING *
       `;
       const taskRequestResult = await client.query(taskRequestQuery, [
-        offer.task_description,      // Use task's original description
-        offer.location_id,           // Use task location
-        offer.offer_duration,        // Use offer's duration
-        offer.creator_id,            // Task creator becomes sender
-        offer.tasker_id,            // Tasker from offer
-        hourlyRate,                  // Use the exact hourly rate from the offer
-        'Waiting for Payment',       // Initial status
-        true,                        // Mark as created from open task
-        offer.task_id               // Store the original open task ID
+        offer.task_description, // Use task's original description
+        offer.location_id, // Use task location
+        offer.offer_duration, // Use offer's duration
+        offer.creator_id, // Task creator becomes sender
+        offer.tasker_id, // Tasker from offer
+        hourlyRate, // Use the exact hourly rate from the offer
+        'Waiting for Payment', // Initial status
+        true, // Mark as created from open task
+        offer.task_id, // Store the original open task ID
       ]);
 
       // Log the created task request to verify the hourly rate
@@ -471,14 +471,14 @@ class OpenTask extends BaseModel {
         hourly_rate: taskRequestResult.rows[0].hourly_rate,
         duration: taskRequestResult.rows[0].duration,
         is_open_task: taskRequestResult.rows[0].is_open_task,
-        open_task_id: taskRequestResult.rows[0].open_task_id
+        open_task_id: taskRequestResult.rows[0].open_task_id,
       });
 
       // Add availability from the offer
       await client.query(
         `INSERT INTO task_request_availability (task_request_id, date, time_slot)
          VALUES ($1, $2, $3)`,
-        [taskRequestResult.rows[0].id, offer.offer_date, offer.offer_time]
+        [taskRequestResult.rows[0].id, offer.offer_date, offer.offer_time],
       );
 
       // Add categories from original task
@@ -495,11 +495,11 @@ class OpenTask extends BaseModel {
             // Extract just the filename from the full path
             const filename = photoUrl.split('\\').pop().split('/').pop();
             const formattedPath = `images/tasks/${filename}`;
-            
+
             await client.query(
               `INSERT INTO task_request_gallery (task_request_id, image_url)
                VALUES ($1, $2)`,
-              [taskRequestResult.rows[0].id, formattedPath]
+              [taskRequestResult.rows[0].id, formattedPath],
             );
           }
         }
@@ -523,8 +523,8 @@ class OpenTask extends BaseModel {
           id: taskRequestResult.rows[0].id.toString(),
           title: '✅ Pasiūlymas priimtas',
           description: `${creator.name} ${creator.surname[0]}. priėmė jūsų pasiūlymą.`,
-          type: 'offer_accepted'
-        }
+          type: 'offer_accepted',
+        },
       );
 
       // Get the complete task request with all related data
@@ -596,7 +596,7 @@ class OpenTask extends BaseModel {
 
       console.log('Final task request:', {
         id: completeTask.rows[0].id,
-        tasker: completeTask.rows[0].tasker
+        tasker: completeTask.rows[0].tasker,
       });
 
       await client.query('COMMIT');
@@ -719,7 +719,7 @@ class OpenTask extends BaseModel {
       await client.query('DELETE FROM open_task_photos WHERE task_id = $1', [taskId]);
       await client.query('DELETE FROM open_task_dates WHERE task_id = $1', [taskId]);
       await client.query('DELETE FROM open_task_offers WHERE task_id = $1', [taskId]);
-      
+
       // Delete the task itself
       await client.query('DELETE FROM open_tasks WHERE id = $1', [taskId]);
 
@@ -744,7 +744,7 @@ class OpenTask extends BaseModel {
         WHERE date < CURRENT_DATE
         OR (date = CURRENT_DATE AND time < CURRENT_TIME)
       `;
-      
+
       const result = await client.query(query);
       console.log(`Deleted ${result.rowCount} expired dates`);
 
@@ -779,7 +779,7 @@ class OpenTask extends BaseModel {
         WHERE id IN (SELECT id FROM tasks_without_dates)
         RETURNING id
       `;
-      
+
       const result = await client.query(query);
       console.log(`Deleted ${result.rowCount} open tasks without dates`);
 
@@ -795,4 +795,4 @@ class OpenTask extends BaseModel {
   }
 }
 
-module.exports = OpenTask; 
+module.exports = OpenTask;

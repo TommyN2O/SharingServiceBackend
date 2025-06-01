@@ -12,7 +12,7 @@ class CronService {
     cron.schedule('0 0 * * *', async () => {
       try {
         console.log('Running daily cleanup...');
-        
+
         // Delete expired dates
         const deletedDatesCount = await this.openTaskModel.deleteExpiredDates();
         console.log(`Deleted ${deletedDatesCount} expired dates`);
@@ -29,4 +29,4 @@ class CronService {
   }
 }
 
-module.exports = new CronService(); 
+module.exports = new CronService();

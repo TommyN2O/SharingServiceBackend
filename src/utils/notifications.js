@@ -62,4 +62,4 @@ const sendMulticastNotification = async (tokens, title, body, data = {}) => {
 module.exports = {
   sendNotification,
   sendMulticastNotification,
-}; 
+};

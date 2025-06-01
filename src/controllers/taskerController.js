@@ -2,12 +2,11 @@ const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
 const TaskerProfile = require('../models/TaskerProfile');
-const CustomerRequest = require('../models/CustomerRequest');
+const TaskRequest = require('../models/TaskRequest');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const pool = require('../config/database');
 const Payment = require('../models/Payment');
-const TaskRequest = require('../models/TaskRequest');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -364,7 +363,7 @@ const taskerController = {
       const {
         category, location, minPrice, maxPrice,
       } = req.query;
-      const tasks = await CustomerRequest.findAvailable({
+      const tasks = await TaskRequest.findAvailable({
         category,
         location,
         minPrice,
@@ -389,7 +388,7 @@ const taskerController = {
         return res.status(403).json({ error: 'Tasker profile required to send offers' });
       }
 
-      const offer = await CustomerRequest.createOffer({
+      const offer = await TaskRequest.createOffer({
         request_id: requestId,
         tasker_id: req.user.id,
         price,
@@ -398,7 +397,7 @@ const taskerController = {
       });
 
       // Send notification to customer
-      const request = await CustomerRequest.findById(requestId);
+      const request = await TaskRequest.findById(requestId);
       await Message.create({
         sender_id: req.user.id,
         receiver_id: request.user_id,
@@ -486,11 +485,11 @@ const taskerController = {
           AND status IN ('pending', 'Waiting for Payment', 'paid')
         `;
         const activeTasksResult = await client.query(activeTasksQuery, [userId]);
-        
+
         if (activeTasksResult.rows[0].count > 0) {
           await client.query('ROLLBACK');
-          return res.status(400).json({ 
-            error: 'Cannot delete profile while having active tasks. Please complete or cancel all active tasks first.' 
+          return res.status(400).json({
+            error: 'Cannot delete profile while having active tasks. Please complete or cancel all active tasks first.',
           });
         }
 
@@ -531,21 +530,21 @@ const taskerController = {
     try {
       const currentDate = new Date().toISOString().split('T')[0];
       const currentTime = new Date().toTimeString().split(' ')[0];
-      
+
       let query = `
         DELETE FROM tasker_availability 
         WHERE (date < $1) 
         OR (date = $1 AND time_slot < $2)
       `;
-      
+
       const params = [currentDate, currentTime];
-      
+
       // If taskerId is provided, only remove for that tasker
       if (taskerId) {
         query += ' AND tasker_id = $3';
         params.push(taskerId);
       }
-      
+
       await client.query(query, params);
     } catch (error) {
       console.error('Error removing expired availability:', error);
@@ -557,36 +556,36 @@ const taskerController = {
     try {
       console.log('Getting all tasker profiles with filters:', req.query);
       const client = await pool.connect();
-      
+
       try {
         await client.query('BEGIN');
-        
+
         // Remove expired availability slots
         const currentDate = new Date().toISOString().split('T')[0];
         const currentTime = new Date().toTimeString().split(' ')[0];
-        
+
         await client.query(`
           DELETE FROM tasker_availability 
           WHERE (date < $1) 
           OR (date = $1 AND time_slot < $2)
         `, [currentDate, currentTime]);
-        
-      const filters = {
-        category: req.query.category ? parseInt(req.query.category) : null,
-        rating: req.query.rating ? req.query.rating : null,
-        city: req.query.city ? req.query.city : null,
-        date: req.query.date ? req.query.date : null,
-        timeFrom: req.query.timeFrom ? req.query.timeFrom : null,
-        timeTo: req.query.timeTo ? req.query.timeTo : null,
-        minPrice: req.query.minPrice ? parseFloat(req.query.minPrice) : null,
-        maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice) : null,
-        excludeUserId: req.user.id // Add user ID to exclude their own profile
-      };
 
-      const profiles = await TaskerProfile.getAllProfiles(filters);
-        
+        const filters = {
+          category: req.query.category ? parseInt(req.query.category) : null,
+          rating: req.query.rating ? req.query.rating : null,
+          city: req.query.city ? req.query.city : null,
+          date: req.query.date ? req.query.date : null,
+          timeFrom: req.query.timeFrom ? req.query.timeFrom : null,
+          timeTo: req.query.timeTo ? req.query.timeTo : null,
+          minPrice: req.query.minPrice ? parseFloat(req.query.minPrice) : null,
+          maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice) : null,
+          excludeUserId: req.user.id, // Add user ID to exclude their own profile
+        };
+
+        const profiles = await TaskerProfile.getAllProfiles(filters);
+
         await client.query('COMMIT');
-      res.json(profiles);
+        res.json(profiles);
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -604,16 +603,16 @@ const taskerController = {
     try {
       const { id } = req.params;
       console.log('Getting tasker profile by ID:', id);
-      
+
       const client = await pool.connect();
-      
+
       try {
         await client.query('BEGIN');
-        
+
         // Remove expired availability slots
         const currentDate = new Date().toISOString().split('T')[0];
         const currentTime = new Date().toTimeString().split(' ')[0];
-        
+
         await client.query(`
           DELETE FROM tasker_availability 
           WHERE (date < $1) 
@@ -621,14 +620,14 @@ const taskerController = {
           AND tasker_id = $3
         `, [currentDate, currentTime, id]);
 
-      const profile = await TaskerProfile.getProfileById(id);
+        const profile = await TaskerProfile.getProfileById(id);
 
-      if (!profile) {
-        return res.status(404).json({ error: 'Tasker profile not found' });
-      }
+        if (!profile) {
+          return res.status(404).json({ error: 'Tasker profile not found' });
+        }
 
         await client.query('COMMIT');
-      res.json(profile);
+        res.json(profile);
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -646,9 +645,9 @@ const taskerController = {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      
+
       await this.removeExpiredAvailability(client);
-      
+
       await client.query('COMMIT');
       res.json({ message: 'Successfully cleaned up expired availability slots' });
     } catch (error) {
@@ -717,7 +716,7 @@ const taskerController = {
         }
 
         // Validate that date is not in the past
-        const slotDate = new Date(slot.date + 'T' + slot.time);
+        const slotDate = new Date(`${slot.date}T${slot.time}`);
         const now = new Date();
         if (slotDate < now) {
           return res.status(400).json({
@@ -730,18 +729,18 @@ const taskerController = {
       try {
       // Use the TaskerProfile update method
         const updatedProfile = await TaskerProfile.update(req.user.id, {
-        availability,
-      });
+          availability,
+        });
 
         // Send success response with updated profile
         res.status(200).json({
           message: 'Availability updated successfully',
           profile: updatedProfile,
         });
-    } catch (error) {
+      } catch (error) {
         console.error('Error updating availability:', error);
         return res.status(500).json({
-        error: 'Failed to update availability',
+          error: 'Failed to update availability',
           details: process.env.NODE_ENV === 'development' ? error.message : undefined,
         });
       }
@@ -848,7 +847,7 @@ const taskerController = {
         duration,
         sender_id,
         taskerUserId, // Use the user_id we got from tasker_profiles
-        taskerProfile.hourly_rate // Add the tasker's hourly rate from their profile
+        taskerProfile.hourly_rate, // Add the tasker's hourly rate from their profile
       ]);
 
       const taskRequestId = taskRequestResult.rows[0].id;
@@ -901,11 +900,11 @@ const taskerController = {
         {
           id: taskRequestId.toString(),
           title: '📋 Nauja užklausa',
-          description: `Nauja darbo užklausa ${city.name} mieste: ${categories.map(cat => cat.name).join(', ')}`,
+          description: `Nauja darbo užklausa ${city.name} mieste: ${categories.map((cat) => cat.name).join(', ')}`,
           type: 'new_task',
-          categories: JSON.stringify(categories.map(cat => ({ id: cat.id.toString(), name: cat.name }))),
-          city: JSON.stringify({ id: city.id.toString(), name: city.name })
-        }
+          categories: JSON.stringify(categories.map((cat) => ({ id: cat.id.toString(), name: cat.name }))),
+          city: JSON.stringify({ id: city.id.toString(), name: city.name }),
+        },
       );
 
       // Prepare the response object
@@ -992,12 +991,14 @@ const taskerController = {
       console.log('Getting tasks for sender ID:', sender_id);
 
       // Parse filters from query parameters
-      const categoryIds = req.query.category ? req.query.category.split(',').map(id => parseInt(id)) : null;
-      const cityIds = req.query.city ? req.query.city.split(',').map(id => parseInt(id)) : null;
+      const categoryIds = req.query.category ? req.query.category.split(',').map((id) => parseInt(id)) : null;
+      const cityIds = req.query.city ? req.query.city.split(',').map((id) => parseInt(id)) : null;
       const date = req.query.date || null;
       const status = req.query.status ? req.query.status.toLowerCase() : null; // Convert status to lowercase
 
-      console.log('Filters:', { categoryIds, cityIds, date, status });
+      console.log('Filters:', {
+        categoryIds, cityIds, date, status,
+      });
 
       const client = await pool.connect();
       try {
@@ -1017,7 +1018,7 @@ const taskerController = {
           userExists: tableChecks.rows[0].user_exists,
         });
 
-        let query = `
+        const query = `
           -- Task Requests
           SELECT 
             'task_request' as task_type,
@@ -1085,18 +1086,18 @@ const taskerController = {
           JOIN users t ON tr.tasker_id = t.id
           LEFT JOIN tasker_profiles tp ON t.id = tp.user_id
           WHERE tr.sender_id = $1
-          ${status ? "AND LOWER(tr.status) = $2" : ""}
+          ${status ? 'AND LOWER(tr.status) = $2' : ''}
           ${categoryIds ? `AND EXISTS (
             SELECT 1 FROM task_request_categories trc 
             WHERE trc.task_request_id = tr.id 
             AND trc.category_id = ANY($${status ? 3 : 2}::integer[])
-          )` : ""}
-          ${cityIds ? `AND c.id = ANY($${status ? categoryIds ? 4 : 3 : categoryIds ? 3 : 2}::integer[])` : ""}
+          )` : ''}
+          ${cityIds ? `AND c.id = ANY($${status ? categoryIds ? 4 : 3 : categoryIds ? 3 : 2}::integer[])` : ''}
           ${date ? `AND EXISTS (
             SELECT 1 FROM task_request_availability tra 
             WHERE tra.task_request_id = tr.id 
             AND tra.date = $${status ? categoryIds ? cityIds ? 5 : 4 : 4 : categoryIds ? cityIds ? 4 : 3 : cityIds ? 3 : 2}::date
-          )` : ""}
+          )` : ''}
 
           UNION ALL
 
@@ -1163,14 +1164,14 @@ const taskerController = {
           JOIN categories cat ON ot.category_id = cat.id
           JOIN users s ON ot.creator_id = s.id
           WHERE ot.creator_id = $1
-          ${status ? "AND LOWER(ot.status) = $2" : ""}
-          ${categoryIds ? `AND ot.category_id = ANY($${status ? 3 : 2}::integer[])` : ""}
-          ${cityIds ? `AND c.id = ANY($${status ? categoryIds ? 4 : 3 : categoryIds ? 3 : 2}::integer[])` : ""}
+          ${status ? 'AND LOWER(ot.status) = $2' : ''}
+          ${categoryIds ? `AND ot.category_id = ANY($${status ? 3 : 2}::integer[])` : ''}
+          ${cityIds ? `AND c.id = ANY($${status ? categoryIds ? 4 : 3 : categoryIds ? 3 : 2}::integer[])` : ''}
           ${date ? `AND EXISTS (
             SELECT 1 FROM open_task_dates otd 
             WHERE otd.task_id = ot.id 
             AND otd.date = $${status ? categoryIds ? cityIds ? 5 : 4 : 4 : categoryIds ? cityIds ? 4 : 3 : cityIds ? 3 : 2}::date
-          )` : ""}
+          )` : ''}
           AND NOT EXISTS (
             SELECT 1 
             FROM task_requests tr 
@@ -1224,7 +1225,7 @@ const taskerController = {
           created_at: row.created_at,
           budget: row.budget,
           is_open_task: row.is_open_task,
-          open_task_id: row.open_task_id
+          open_task_id: row.open_task_id,
         }));
 
         // Debug: Log sample task if available
@@ -1254,12 +1255,14 @@ const taskerController = {
       console.log('Getting task requests for tasker ID:', tasker_id);
 
       // Parse filters from query parameters
-      const categoryIds = req.query.category ? req.query.category.split(',').map(id => parseInt(id)) : null;
-      const cityIds = req.query.city ? req.query.city.split(',').map(id => parseInt(id)) : null;
+      const categoryIds = req.query.category ? req.query.category.split(',').map((id) => parseInt(id)) : null;
+      const cityIds = req.query.city ? req.query.city.split(',').map((id) => parseInt(id)) : null;
       const date = req.query.date || null;
       const status = req.query.status ? req.query.status.toLowerCase() : null;
 
-      console.log('Filters:', { categoryIds, cityIds, date, status });
+      console.log('Filters:', {
+        categoryIds, cityIds, date, status,
+      });
 
       const client = await pool.connect();
       try {
@@ -1344,18 +1347,18 @@ const taskerController = {
           JOIN users t ON tr.tasker_id = t.id
           JOIN tasker_profiles tp ON t.id = tp.user_id
           WHERE tr.tasker_id = $1
-          ${status ? "AND LOWER(tr.status) = $2" : ""}
+          ${status ? 'AND LOWER(tr.status) = $2' : ''}
           ${categoryIds ? `AND EXISTS (
             SELECT 1 FROM task_request_categories trc 
             WHERE trc.task_request_id = tr.id 
             AND trc.category_id = ANY($${status ? 3 : 2}::integer[])
-          )` : ""}
-          ${cityIds ? `AND c.id = ANY($${status ? categoryIds ? 4 : 3 : categoryIds ? 3 : 2}::integer[])` : ""}
+          )` : ''}
+          ${cityIds ? `AND c.id = ANY($${status ? categoryIds ? 4 : 3 : categoryIds ? 3 : 2}::integer[])` : ''}
           ${date ? `AND EXISTS (
             SELECT 1 FROM task_request_availability tra 
             WHERE tra.task_request_id = tr.id 
             AND tra.date = $${status ? categoryIds ? cityIds ? 5 : 4 : 4 : categoryIds ? cityIds ? 4 : 3 : cityIds ? 3 : 2}::date
-          )` : ""}
+          )` : ''}
           ORDER BY tr.created_at DESC
         `;
 
@@ -1575,13 +1578,13 @@ const taskerController = {
           JOIN tasker_profiles tp ON u.id = tp.user_id
           WHERE tr.id = $1`;
         const currentStatusResult = await client.query(currentStatusQuery, [id]);
-        
+
         if (!currentStatusResult.rows.length) {
           return res.status(404).json({ error: 'Task request not found' });
         }
 
         const taskRequest = currentStatusResult.rows[0];
-        
+
         // Check if user is either the sender or tasker
         if (taskRequest.sender_id !== req.user.id && taskRequest.tasker_id !== req.user.id) {
           return res.status(403).json({ error: 'Not authorized to update this task request' });
@@ -1614,8 +1617,8 @@ const taskerController = {
               id: id.toString(),
               title: '✅ Užklausa priimta',
               description: `${tasker.name} ${tasker.surname[0]}. priėmė jūsų užklausą. Prašome atlikti mokėjimą.`,
-              type: 'waiting_for_payment'
-            }
+              type: 'waiting_for_payment',
+            },
           );
         } else if (finalStatus === 'Declined') {
           // Send notification to sender when task is declined
@@ -1626,8 +1629,8 @@ const taskerController = {
               id: id.toString(),
               title: '❌ Užklausa atmestas',
               description: `${tasker.name} ${tasker.surname[0]}. atmetė jūsų užklausą.`,
-              type: 'task_declined'
-            }
+              type: 'task_declined',
+            },
           );
         } else if (finalStatus === 'Completed') {
           // Send notification to sender
@@ -1638,8 +1641,8 @@ const taskerController = {
               id: id.toString(),
               title: '✅ Darbas užbaigtas',
               description: `${tasker.name} ${tasker.surname[0]}. pažymėjo jūsų užklausą kaip užbaigtą.`,
-              type: 'task_completed'
-            }
+              type: 'task_completed',
+            },
           );
         } else if (finalStatus === 'Canceled' && currentStatus !== 'paid') {
           // Get the name of who canceled (either tasker or sender)
@@ -1660,8 +1663,8 @@ const taskerController = {
                 id: id.toString(),
                 title: '❌ Užklausa atšaukta',
                 description: `${canceler.name} ${canceler.surname[0]}. atšaukė užklausą.`,
-                type: 'task_canceled'
-              }
+                type: 'task_canceled',
+              },
             );
           }
         }
@@ -1701,8 +1704,8 @@ const taskerController = {
                 id: id.toString(),
                 title: '❌ Užklausa atšaukta',
                 description: `Užklausa buvo atšaukta klientu ${sender.name} ${sender.surname[0]}.`,
-                type: 'task_canceled'
-              }
+                type: 'task_canceled',
+              },
             );
 
             await client.query('COMMIT');
@@ -1749,7 +1752,7 @@ const taskerController = {
               WHERE task_request_id = $1
             `;
             const galleryResult = await client.query(galleryQuery, [id]);
-            const convertedPhotos = galleryResult.rows.map(photo => {
+            const convertedPhotos = galleryResult.rows.map((photo) => {
               // Extract just the filename from the full path
               const filename = photo.image_url.split('\\').pop().split('/').pop();
               return `images/tasks/${filename}`;
@@ -1761,7 +1764,7 @@ const taskerController = {
                 await client.query(
                   `INSERT INTO open_task_photos (task_id, photo_url)
                    VALUES ($1, $2)`,
-                  [openTaskResult.rows[0].id, photoUrl]
+                  [openTaskResult.rows[0].id, photoUrl],
                 );
               }
             }
@@ -1781,8 +1784,8 @@ const taskerController = {
                 id: id.toString(),
                 title: '❌ Užklausa atšaukta',
                 description: `${sender.name} ${sender.surname[0]}. užklausa buvo atšauktas.`,
-                type: 'task_canceled'
-              }
+                type: 'task_canceled',
+              },
             );
 
             // Send notification to sender about cancellation
@@ -1793,8 +1796,8 @@ const taskerController = {
                 id: id.toString(),
                 title: '❌ Užklausa atšaukta',
                 description: `Jūsų užklausa su ${tasker.name} ${tasker.surname[0]}. buvo atšaukta.`,
-                type: 'task_canceled'
-              }
+                type: 'task_canceled',
+              },
             );
 
             // Send notification to sender about task being open
@@ -1804,15 +1807,15 @@ const taskerController = {
               {
                 id: openTaskResult.rows[0].id.toString(),
                 title: '📋 Atvira užklausa',
-                description: `Užklausa dabar prieinama visiems paslaugų teikėjams.`,
-                type: 'task_open'
-              }
+                description: 'Užklausa dabar prieinama visiems paslaugų teikėjams.',
+                type: 'task_open',
+              },
             );
 
             await client.query('COMMIT');
-            return res.json({ 
+            return res.json({
               message: 'Task request canceled and deleted',
-              open_task: openTaskResult.rows[0]
+              open_task: openTaskResult.rows[0],
             });
           } catch (error) {
             console.error('Error handling open task cancellation:', error);
@@ -1873,8 +1876,8 @@ const taskerController = {
                 id: id.toString(),
                 title: '❌ Suplanuotas darbas atšauktas',
                 description: `Suplanuotas darbas pas ${sender.name} ${sender.surname[0]}. buvo atšauktas.`,
-                type: 'task_canceled'
-              }
+                type: 'task_canceled',
+              },
             );
 
             // Send notification to sender
@@ -1885,8 +1888,8 @@ const taskerController = {
                 id: id.toString(),
                 title: '❌ Suplanuotas darbas atšauktas',
                 description: `Jūsų suplanuotas darbas su ${tasker.name} ${tasker.surname[0]}. buvo atšauktas.`,
-                type: 'task_canceled'
-              }
+                type: 'task_canceled',
+              },
             );
 
             // Send payment refund notification to sender
@@ -1896,9 +1899,9 @@ const taskerController = {
               {
                 id: id.toString(),
                 title: '💰 Mokėjimas grąžintas',
-                description: `Mokėjimas už atšauktą užsakymą buvo grąžintas į jūsų skaitmeninę piniginę.`,
-                type: 'payment_refunded'
-              }
+                description: 'Mokėjimas už atšauktą užsakymą buvo grąžintas į jūsų skaitmeninę piniginę.',
+                type: 'payment_refunded',
+              },
             );
 
             // Send notification to sender about task being open
@@ -1908,16 +1911,16 @@ const taskerController = {
               {
                 id: openTaskResult.rows[0].id.toString(),
                 title: '📋 Atvira užklausa',
-                description: `Užklausa dabar prieinama visiems paslaugų teikėjams.`,
-                type: 'task_open'
-              }
+                description: 'Užklausa dabar prieinama visiems paslaugų teikėjams.',
+                type: 'task_open',
+              },
             );
 
             await client.query('COMMIT');
-            return res.json({ 
+            return res.json({
               message: 'Task request canceled and refunded',
               task_request: taskRequestResult.rows[0],
-              open_task: openTaskResult.rows[0]
+              open_task: openTaskResult.rows[0],
             });
           } catch (error) {
             console.error('Error handling payment refund:', error);
@@ -1931,7 +1934,7 @@ const taskerController = {
           try {
             const refundResult = await Payment.handleTaskCancellation(id);
             console.log('Payment refund result:', refundResult);
-            
+
             // Update task request to refunded status
             const updateQuery = `
               UPDATE task_requests 
@@ -1959,8 +1962,8 @@ const taskerController = {
                 id: id.toString(),
                 title: '❌ Suplanuotas darbas atšauktas',
                 description: `Suplanuotas darbas pas ${sender.name} ${sender.surname[0]}. buvo atšauktas.`,
-                type: 'task_canceled'
-              }
+                type: 'task_canceled',
+              },
             );
 
             // Send notification to sender
@@ -1971,8 +1974,8 @@ const taskerController = {
                 id: id.toString(),
                 title: '❌ Suplanuotas darbas atšauktas',
                 description: `Jūsų suplanuotas darbas su ${tasker.name} ${tasker.surname[0]}. buvo atšauktas.`,
-                type: 'task_canceled'
-              }
+                type: 'task_canceled',
+              },
             );
 
             // Send payment refund notification to sender
@@ -1982,11 +1985,11 @@ const taskerController = {
               {
                 id: id.toString(),
                 title: '💰 Mokėjimas grąžintas',
-                description: `Mokėjimas už atšauktą darbą buvo grąžintas į jūsų skaitmeninę piniginę.`,
-                type: 'payment_refunded'
-              }
+                description: 'Mokėjimas už atšauktą darbą buvo grąžintas į jūsų skaitmeninę piniginę.',
+                type: 'payment_refunded',
+              },
             );
-            
+
             await client.query('COMMIT');
             return res.json(result.rows[0]);
           } catch (error) {
@@ -2009,9 +2012,9 @@ const taskerController = {
           RETURNING *
         `;
         const result = await client.query(updateQuery, [
-          finalStatus, 
+          finalStatus,
           taskRequest.tasker_hourly_rate,
-          id
+          id,
         ]);
 
         // If status is "Canceled by sender", send notification to tasker
@@ -2034,8 +2037,8 @@ const taskerController = {
               id: id.toString(),
               title: '❌ Užklausa atšaukta',
               description: `Užklausa atšaukta klientu ${sender.name} ${sender.surname[0]}.`,
-              type: 'task_canceled'
-            }
+              type: 'task_canceled',
+            },
           );
         }
 
@@ -2213,35 +2216,35 @@ const taskerController = {
           const openTaskResult = await client.query(openTaskQuery, [sender_id, task_id]);
 
           if (openTaskResult.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Task not found or you do not have permission to view it',
-          });
-        }
+            return res.status(404).json({
+              error: 'Task not found or you do not have permission to view it',
+            });
+          }
 
           // Format open task response
           const row = openTaskResult.rows[0];
-        const task = {
+          const task = {
             task_type: row.task_type,
-          id: row.id,
-          description: row.description,
-          city: {
-            id: row.city_id,
-            name: row.city_name,
-          },
-          categories: row.categories || [],
-          duration: row.duration,
-          availability: row.availability || [],
-          sender: {
-            id: row.sender_id,
-            name: row.sender_name,
-            surname: row.sender_surname,
-            profile_photo: row.sender_profile_photo,
-          },
+            id: row.id,
+            description: row.description,
+            city: {
+              id: row.city_id,
+              name: row.city_name,
+            },
+            categories: row.categories || [],
+            duration: row.duration,
+            availability: row.availability || [],
+            sender: {
+              id: row.sender_id,
+              name: row.sender_name,
+              surname: row.sender_surname,
+              profile_photo: row.sender_profile_photo,
+            },
             tasker: null,
             gallery: row.gallery || [],
             status: row.status,
             created_at: row.created_at,
-            budget: row.budget
+            budget: row.budget,
           };
 
           console.log('Found open task:', JSON.stringify(task, null, 2));
@@ -2280,7 +2283,7 @@ const taskerController = {
           created_at: row.created_at,
           budget: row.budget,
           is_open_task: row.is_open_task,
-          open_task_id: row.open_task_id
+          open_task_id: row.open_task_id,
         };
 
         console.log('Found task request:', JSON.stringify(task, null, 2));
@@ -2833,9 +2836,9 @@ const taskerController = {
         wallet_bank_iban: userResult.rows[0].wallet_bank_iban || null,
         transactions: transactionsResult.rows.map((row) => ({
           payment_id: row.payment_id,
-          amount: row.payment_status === 'refunded' ? 
-            Math.abs(row.amount) : // Make refunded amount positive before negating
-            (row.is_payment ? row.amount * -1 : row.amount), // Normal payment logic
+          amount: row.payment_status === 'refunded'
+            ? Math.abs(row.amount) // Make refunded amount positive before negating
+            : (row.is_payment ? row.amount * -1 : row.amount), // Normal payment logic
           payment_date: row.payment_date,
           payment_status: row.payment_status,
           transaction_type: row.payment_status === 'refunded' ? 'refund' : (row.is_payment ? 'payment' : 'earning'),
@@ -2868,28 +2871,27 @@ const taskerController = {
   async checkIfTasker(req, res) {
     try {
       const userId = req.user.id;
-      
+
       const query = `
         SELECT is_tasker 
         FROM users 
         WHERE id = $1
       `;
-      
+
       const result = await pool.query(query, [userId]);
-      
+
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'User not found' });
       }
-      
-      res.json({ 
-        is_tasker: result.rows[0].is_tasker 
+
+      res.json({
+        is_tasker: result.rows[0].is_tasker,
       });
-      
     } catch (error) {
       console.error('Error checking if user is tasker:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to check tasker status',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined 
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -2904,7 +2906,7 @@ const taskerController = {
 
       if (!budget || !availability || !Array.isArray(availability) || availability.length === 0) {
         return res.status(400).json({
-          error: 'Budget and availability array are required'
+          error: 'Budget and availability array are required',
         });
       }
 
@@ -2912,7 +2914,7 @@ const taskerController = {
         taskId: task_id,
         userId: user_id,
         budget,
-        availability
+        availability,
       });
 
       await client.query('BEGIN');
@@ -2934,7 +2936,7 @@ const taskerController = {
 
       if (taskRequestResult.rows.length === 0) {
         return res.status(404).json({
-          error: 'Task request not found or you do not have permission to modify it'
+          error: 'Task request not found or you do not have permission to modify it',
         });
       }
 
@@ -2962,12 +2964,12 @@ const taskerController = {
       // Create the open task with the provided budget
       const openTaskResult = await client.query(createOpenTaskQuery, [
         taskRequest.description,
-        budget,  // Use the budget from request body
+        budget, // Use the budget from request body
         taskRequest.duration,
         taskRequest.city_id,
         user_id,
         categoryId,
-        'open'
+        'open',
       ]);
 
       const openTask = openTaskResult.rows[0];
@@ -2981,7 +2983,7 @@ const taskerController = {
         await client.query(
           `INSERT INTO open_task_dates (task_id, date, time)
            VALUES ($1, $2, $3)`,
-          [openTask.id, slot.date, slot.time]
+          [openTask.id, slot.date, slot.time],
         );
       }
       console.log('Added availability slots:', availability);
@@ -2993,11 +2995,11 @@ const taskerController = {
             // Extract just the filename from the full path
             const filename = imageUrl.split('\\').pop().split('/').pop();
             const formattedPath = `images/tasks/${filename}`;
-            
+
             await client.query(
               `INSERT INTO open_task_photos (task_id, photo_url)
                VALUES ($1, $2)`,
-              [openTask.id, formattedPath]
+              [openTask.id, formattedPath],
             );
           }
         }
@@ -3062,15 +3064,14 @@ const taskerController = {
 
       res.json({
         message: 'Successfully converted task request to open task',
-        task: completeTask.rows[0]
+        task: completeTask.rows[0],
       });
-
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('Error converting task request to open task:', error);
       res.status(500).json({
         error: 'Failed to convert task request to open task',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     } finally {
       client.release();

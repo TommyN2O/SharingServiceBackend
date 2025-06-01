@@ -19,7 +19,7 @@ async function testDeviceRegistration() {
     console.log('Token created:', token ? 'Success' : 'Failed');
 
     console.log('\n3. Testing device token registration...');
-    const testDeviceToken = 'test_fcm_token_' + Date.now();
+    const testDeviceToken = `test_fcm_token_${Date.now()}`;
     const addedDevice = await UserDevice.addDeviceToken(userId, testDeviceToken);
     console.log('Device registered:', addedDevice);
 
@@ -30,7 +30,6 @@ async function testDeviceRegistration() {
     console.log('\n5. Cleaning up...');
     await UserDevice.removeDeviceToken(testDeviceToken);
     console.log('Test completed successfully! ✨');
-
   } catch (error) {
     console.error('Test failed:', error);
   } finally {
@@ -39,4 +38,4 @@ async function testDeviceRegistration() {
 }
 
 // Run the test
-testDeviceRegistration(); 
+testDeviceRegistration();

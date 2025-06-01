@@ -1,4 +1,5 @@
 const express = require('express');
+
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
@@ -19,14 +20,14 @@ router.use((req, res, next) => {
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
+  destination(req, file, cb) {
     cb(null, path.join(__dirname, '../../public/images/tasks'));
   },
-  filename: function (req, file, cb) {
+  filename(req, file, cb) {
     const timestamp = Date.now();
     const filename = `${timestamp}-${file.originalname.replace(/\s+/g, '-')}`;
     cb(null, filename);
-  }
+  },
 });
 
 const fileFilter = (req, file, cb) => {
@@ -38,13 +39,13 @@ const fileFilter = (req, file, cb) => {
   cb(null, true);
 };
 
-const upload = multer({ 
-  storage: storage,
-  fileFilter: fileFilter,
+const upload = multer({
+  storage,
+  fileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB max file size
-    files: 5 // Maximum 5 files
-  }
+    files: 5, // Maximum 5 files
+  },
 }).array('galleryImages', 5);
 
 const openTaskController = new OpenTaskController();
@@ -52,16 +53,16 @@ const openTaskController = new OpenTaskController();
 // Create a new open task
 router.post('/', authenticateToken, (req, res, next) => {
   console.log('Received request headers:', req.headers);
-  
+
   upload(req, res, (err) => {
     console.log('Multer processing complete');
     console.log('Request body after multer:', req.body);
     console.log('Request files after multer:', req.files);
-    
+
     if (err instanceof multer.MulterError) {
       console.error('Multer error:', err);
       return res.status(400).json({ error: err.message });
-    } else if (err) {
+    } if (err) {
       console.error('Upload error:', err);
       return res.status(500).json({ error: 'File upload failed', details: err.message });
     }
@@ -73,22 +74,25 @@ router.post('/', authenticateToken, (req, res, next) => {
 router.get(['/', '//'], openTaskController.getAllOpenTasks);
 
 // Get tasks by category
-router.get('/category/:categoryId',
-  openTaskController.getTasksByCategory
+router.get(
+  '/category/:categoryId',
+  openTaskController.getTasksByCategory,
 );
 
 // Get open task by ID
-router.get('/:id',
-  openTaskController.getOpenTaskById
+router.get(
+  '/:id',
+  openTaskController.getOpenTaskById,
 );
 
 // Delete expired dates
 router.delete('/dates/expired', authenticateToken, openTaskController.deleteExpiredDates);
 
 // Delete open task
-router.delete('/:id', 
+router.delete(
+  '/:id',
   authenticateToken,
-  openTaskController.deleteOpenTask
+  openTaskController.deleteOpenTask,
 );
 
 // Get dates for a specific open task
@@ -101,16 +105,18 @@ router.get('/:taskId/offers', openTaskController.getTaskOffers);
 router.get('/offers/:offerId', openTaskController.getOfferById);
 
 // Create an offer for a task
-router.post('/:taskId/offers',
+router.post(
+  '/:taskId/offers',
   authenticateToken,
   isTasker,
-  openTaskController.createOffer
+  openTaskController.createOffer,
 );
 
 // Accept an offer
-router.post('/offers/:offerId/accept',
+router.post(
+  '/offers/:offerId/accept',
   authenticateToken,
-  openTaskController.acceptOffer
+  openTaskController.acceptOffer,
 );
 
-module.exports = router; 
+module.exports = router;

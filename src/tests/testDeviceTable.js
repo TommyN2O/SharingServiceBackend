@@ -35,7 +35,7 @@ async function testDeviceTable() {
 
     // 3. Test adding a device token
     console.log('\n3. Testing device token addition...');
-    const testToken = 'test_fcm_token_' + Date.now();
+    const testToken = `test_fcm_token_${Date.now()}`;
     const addedDevice = await UserDevice.addDeviceToken(userId, testToken);
     console.log('Added device:', addedDevice);
 
@@ -48,7 +48,7 @@ async function testDeviceTable() {
     console.log('\n5. Verifying token in database...');
     const verifyResult = await pool.query(
       'SELECT * FROM user_devices WHERE device_token = $1',
-      [testToken]
+      [testToken],
     );
     console.log('Verification result:', verifyResult.rows[0]);
 
@@ -56,7 +56,6 @@ async function testDeviceTable() {
     console.log('\n6. Cleaning up - removing test token...');
     await UserDevice.removeDeviceToken(testToken);
     console.log('Test completed successfully! ✨');
-
   } catch (error) {
     console.error('Test failed:', error);
   } finally {
@@ -66,4 +65,4 @@ async function testDeviceTable() {
 }
 
 // Run the test
-testDeviceTable(); 
+testDeviceTable();

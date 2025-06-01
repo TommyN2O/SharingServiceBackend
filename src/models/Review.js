@@ -20,7 +20,7 @@ class Review extends BaseModel {
 
   async findByRevieweeId(revieweeId) {
     console.log('Finding reviews for reviewee ID:', revieweeId);
-    
+
     // First, let's check if we need to get the user_id from tasker_profiles
     const taskerQuery = `
       SELECT user_id 
@@ -29,7 +29,7 @@ class Review extends BaseModel {
     `;
     const taskerResult = await pool.query(taskerQuery, [revieweeId]);
     const userId = taskerResult.rows[0]?.user_id;
-    
+
     console.log('Found user_id:', userId);
 
     const query = `

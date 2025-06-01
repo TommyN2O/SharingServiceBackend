@@ -1,4 +1,5 @@
 const express = require('express');
+
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const { requestPayout, getPayoutRequests } = require('../controllers/payoutController');
@@ -12,4 +13,4 @@ router.post('/request', requestPayout);
 // Get user's payout requests
 router.get('/requests', getPayoutRequests);
 
-module.exports = router; 
+module.exports = router;

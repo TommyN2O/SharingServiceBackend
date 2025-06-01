@@ -81,36 +81,13 @@ class User extends BaseModel {
     return result.rows[0];
   }
 
-  async getUserWithCustomerRequests(userId) {
-    const query = `
-      SELECT u.*, cr.*
-      FROM users u
-      LEFT JOIN customer_requests cr ON u.id = cr.user_id
-      WHERE u.id = $1
-    `;
-    const { rows } = await pool.query(query, [userId]);
-    return rows;
-  }
-
-  async getUserWithSavedTaskers(userId) {
-    const query = `
-      SELECT t.*, tp.*
-      FROM saved_taskers st
-      JOIN users t ON st.tasker_id = t.id
-      JOIN tasker_profiles tp ON t.id = tp.user_id
-      WHERE st.customer_id = $1
-    `;
-    const result = await pool.query(query, [userId]);
-    return result.rows;
-  }
-
   async getUserDashboard(userId) {
     try {
       const query = `
         SELECT 
-          COALESCE((SELECT COUNT(*) FROM customer_requests WHERE user_id = $1), 0) as total_requests,
-          COALESCE((SELECT COUNT(*) FROM planned_tasks WHERE customer_id = $1 AND status = 'completed'), 0) as completed_tasks,
-          COALESCE((SELECT COUNT(*) FROM planned_tasks WHERE tasker_id = $1 AND status = 'completed'), 0) as completed_tasker_tasks,
+          COALESCE((SELECT COUNT(*) FROM task_requests WHERE sender_id = $1), 0) as total_requests,
+          COALESCE((SELECT COUNT(*) FROM task_requests WHERE sender_id = $1 AND status = 'completed'), 0) as completed_tasks,
+          COALESCE((SELECT COUNT(*) FROM task_requests WHERE tasker_id = $1 AND status = 'completed'), 0) as completed_tasker_tasks,
           COALESCE((SELECT AVG(rating) FROM reviews WHERE tasker_id = $1), 0) as average_rating
       `;
       const result = await pool.query(query, [userId]);
@@ -125,6 +102,18 @@ class User extends BaseModel {
         average_rating: 0,
       };
     }
+  }
+
+  async getUserStats(userId) {
+    const query = `
+      SELECT 
+        COALESCE((SELECT COUNT(*) FROM task_requests WHERE sender_id = $1), 0) as total_requests,
+        COALESCE((SELECT COUNT(*) FROM reviews WHERE reviewer_id = $1), 0) as total_reviews
+      FROM users 
+      WHERE id = $1
+    `;
+    const result = await pool.query(query, [userId]);
+    return result.rows[0];
   }
 
   // Create user table
@@ -445,7 +434,7 @@ class User extends BaseModel {
         const token = jwt.sign(
           { userId },
           JWT_SECRET,
-          { expiresIn: JWT_EXPIRES_IN }
+          { expiresIn: JWT_EXPIRES_IN },
         );
 
         // Update the user's current token and token creation time

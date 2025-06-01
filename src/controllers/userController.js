@@ -2,8 +2,9 @@ const _bcrypt = require('bcryptjs');
 const _jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const TaskerProfile = require('../models/TaskerProfile');
-const CustomerRequest = require('../models/CustomerRequest');
 const Message = require('../models/Message');
+const TaskRequest = require('../models/TaskRequest');
+const FirebaseService = require('../services/firebaseService');
 const pool = require('../config/database');
 
 const { _JWT_SECRET, _JWT_EXPIRES_IN } = process.env;
@@ -54,7 +55,7 @@ const userController = {
       // Validate password length
       if (password.length < 6) {
         return res.status(400).json({
-          error: 'Password must be at least 6 characters long'
+          error: 'Password must be at least 6 characters long',
         });
       }
 
@@ -195,7 +196,7 @@ const userController = {
         created_at: user.created_at,
         is_tasker: user.is_tasker,
         profile_photo: user.profile_photo || '',
-        wallet_bank_iban: user.wallet_bank_iban || null
+        wallet_bank_iban: user.wallet_bank_iban || null,
       };
       console.log('Sending response:', response);
 
@@ -230,7 +231,9 @@ const userController = {
       }
 
       // Map the fields from the request to our database fields
-      const { fullname, surname, birthdate, wallet_bank_iban } = userData;
+      const {
+        fullname, surname, birthdate, wallet_bank_iban,
+      } = userData;
 
       // Get current user data
       const currentUser = await User.getById(userId);
@@ -277,47 +280,13 @@ const userController = {
         created_at: finalUser.created_at,
         is_tasker: finalUser.is_tasker,
         profile_photo: finalUser.profile_photo || '',
-        wallet_bank_iban: finalUser.wallet_bank_iban || null
+        wallet_bank_iban: finalUser.wallet_bank_iban || null,
       });
     } catch (error) {
       console.error('Error updating user profile:', error);
       res.status(500).json({
         error: 'Internal server error',
       });
-    }
-  },
-
-  // Get user's customer requests
-  async getCustomerRequests(req, res) {
-    try {
-      const requests = await CustomerRequest.findByUserId(req.user.id);
-      res.json(requests);
-    } catch (error) {
-      res.status(400).json({ error: error.message });
-    }
-  },
-
-  // Get user's saved taskers
-  async getSavedTaskers(req, res) {
-    try {
-      const taskers = await User.getUserWithSavedTaskers(req.user.id);
-      res.json(taskers);
-    } catch (error) {
-      res.status(400).json({ error: error.message });
-    }
-  },
-
-  // Save a tasker
-  async saveTasker(req, res) {
-    try {
-      const { taskerId } = req.body;
-      const savedTasker = await pool.query(
-        'INSERT INTO saved_taskers (customer_id, tasker_id) VALUES ($1, $2) RETURNING *',
-        [req.user.id, taskerId],
-      );
-      res.status(201).json(savedTasker.rows[0]);
-    } catch (error) {
-      res.status(400).json({ error: error.message });
     }
   },
 
@@ -559,7 +528,7 @@ const userController = {
       console.error('Error getting wallet balance:', error);
       res.status(500).json({
         error: 'Failed to get wallet balance',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -624,9 +593,9 @@ const userController = {
         WHERE id = $2
         RETURNING id
       `;
-      
+
       const updateResult = await client.query(updateQuery, [hashedPassword, userId]);
-      
+
       if (updateResult.rows.length === 0) {
         await client.query('ROLLBACK');
         return res.sendStatus(500); // User not found or couldn't be updated

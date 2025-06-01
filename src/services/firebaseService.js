@@ -15,7 +15,7 @@ class FirebaseService {
     try {
       // Get all device tokens for the user
       const deviceTokens = await UserDevice.getDeviceTokens(userId);
-      
+
       if (!deviceTokens.length) {
         console.log(`No device tokens found for user ${userId}`);
         return { success: false, error: 'No devices registered' };
@@ -24,12 +24,12 @@ class FirebaseService {
       const message = {
         notification: {
           title: notification.title,
-          body: notification.body
+          body: notification.body,
         },
         data: {
           ...data,
-          click_action: 'FLUTTER_NOTIFICATION_CLICK' // Required for Flutter apps
-        }
+          click_action: 'FLUTTER_NOTIFICATION_CLICK', // Required for Flutter apps
+        },
       };
 
       const results = await Promise.all(
@@ -40,23 +40,23 @@ class FirebaseService {
             return { success: true, messageId: response };
           } catch (error) {
             console.error(`Error sending to token ${token}:`, error);
-            
+
             // If token is invalid or expired, remove it
-            if (error.code === 'messaging/invalid-registration-token' ||
-                error.code === 'messaging/registration-token-not-registered') {
+            if (error.code === 'messaging/invalid-registration-token'
+                || error.code === 'messaging/registration-token-not-registered') {
               await UserDevice.removeDeviceToken(token);
             }
-            
+
             return { success: false, error: error.message };
           }
-        })
+        }),
       );
 
       return {
         success: true,
         results,
-        successCount: results.filter(r => r.success).length,
-        failureCount: results.filter(r => !r.success).length
+        successCount: results.filter((r) => r.success).length,
+        failureCount: results.filter((r) => !r.success).length,
       };
     } catch (error) {
       console.error('Error in sendNotificationToUser:', error);
@@ -76,16 +76,14 @@ class FirebaseService {
   static async sendNotificationToUsers(userIds, notification, data = {}) {
     try {
       const results = await Promise.all(
-        userIds.map(userId => 
-          this.sendNotificationToUser(userId, notification, data)
-        )
+        userIds.map((userId) => this.sendNotificationToUser(userId, notification, data)),
       );
 
       return {
         success: true,
         results,
-        successCount: results.filter(r => r.success).length,
-        failureCount: results.filter(r => !r.success).length
+        successCount: results.filter((r) => r.success).length,
+        failureCount: results.filter((r) => !r.success).length,
       };
     } catch (error) {
       console.error('Error in sendNotificationToUsers:', error);
@@ -105,26 +103,26 @@ class FirebaseService {
       // Get sender's name from database
       const pool = require('../config/database');
       const client = await pool.connect();
-      
+
       try {
         const userQuery = 'SELECT name, surname FROM users WHERE id = $1';
         const userResult = await client.query(userQuery, [senderId]);
         const sender = userResult.rows[0];
-        
+
         if (!sender) {
           throw new Error('Sender not found');
         }
 
         const notification = {
           title: `Nauja žinutė nuo ${sender.name} ${sender.surname}`,
-          body: message.length > 100 ? message.substring(0, 97) + '...' : message
+          body: message.length > 100 ? `${message.substring(0, 97)}...` : message,
         };
 
         const data = {
           type: 'chat_message',
           senderId: senderId.toString(),
           senderName: `${sender.name} ${sender.surname}`,
-          messagePreview: message.substring(0, 100)
+          messagePreview: message.substring(0, 100),
         };
 
         return await this.sendNotificationToUser(receiverId, notification, data);
@@ -153,7 +151,7 @@ class FirebaseService {
     try {
       const notification = {
         title: taskData.title,
-        body: taskData.description
+        body: taskData.description,
       };
 
       const data = {
@@ -161,7 +159,7 @@ class FirebaseService {
         taskId: taskData.id?.toString() || '',
         categories: JSON.stringify(taskData.categories || []),
         city: taskData.city || '',
-        click_action: 'FLUTTER_NOTIFICATION_CLICK'
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
       };
 
       return await this.sendNotificationToUser(receiverId, notification, data);
@@ -172,4 +170,4 @@ class FirebaseService {
   }
 }
 
-module.exports = FirebaseService; 
+module.exports = FirebaseService;

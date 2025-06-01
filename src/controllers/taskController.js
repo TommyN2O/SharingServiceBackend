@@ -1,12 +1,9 @@
-const CustomerRequest = require('../models/CustomerRequest');
-const PlannedTask = require('../models/PlannedTask');
-const Message = require('../models/Message');
-const Review = require('../models/Review');
-const pool = require('../config/database');
-const paymentController = require('./paymentController');
-const TaskerProfile = require('../models/TaskerProfile');
 const TaskRequest = require('../models/TaskRequest');
 const User = require('../models/User');
+const pool = require('../config/database');
+const Review = require('../models/Review');
+const TaskerProfile = require('../models/TaskerProfile');
+const paymentController = require('./paymentController');
 
 const taskController = {
   // Create a new customer request
@@ -88,7 +85,7 @@ const taskController = {
         'UPDATE customer_request_offers SET status = $1 WHERE id = $2',
         ['accepted', offerId],
       );
-      
+
       res.status(201).json(plannedTask);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -148,12 +145,12 @@ const taskController = {
       const { taskId } = req.params;
       const { rating, review } = req.body;
 
-      const task = await PlannedTask.findById(taskId);
+      const task = await TaskRequest.findById(taskId);
       if (!task) {
         return res.status(404).json({ error: 'Task not found' });
       }
 
-      if (task.customer_id !== req.user.id) {
+      if (task.sender_id !== req.user.id) {
         return res.status(403).json({ error: 'Not authorized to review this task' });
       }
 
@@ -162,7 +159,7 @@ const taskController = {
       }
 
       const newReview = await Review.createReview({
-        planned_task_id: taskId,
+        task_request_id: taskId,
         reviewer_id: req.user.id,
         reviewee_id: task.tasker_id,
         rating,
@@ -183,17 +180,14 @@ const taskController = {
     try {
       const query = `
         SELECT 
-          pt.*,
-          u.name as customer_name,
-          t.name as tasker_name,
-          cr.description as request_description,
-          cr.budget
-        FROM planned_tasks pt
-        JOIN users u ON pt.customer_id = u.id
-        JOIN users t ON pt.tasker_id = t.id
-        JOIN customer_requests cr ON pt.request_id = cr.id
-        WHERE pt.status = 'completed'
-        ORDER BY pt.completed_at DESC
+          tr.*,
+          u.name as sender_name,
+          t.name as tasker_name
+        FROM task_requests tr
+        JOIN users u ON tr.sender_id = u.id
+        JOIN users t ON tr.tasker_id = t.id
+        WHERE tr.status = 'completed'
+        ORDER BY tr.updated_at DESC
       `;
 
       const result = await pool.query(query);

@@ -9,7 +9,7 @@ const deviceController = {
 
       if (!deviceToken) {
         return res.status(400).json({
-          error: 'Device token is required'
+          error: 'Device token is required',
         });
       }
 
@@ -20,13 +20,13 @@ const deviceController = {
       res.status(201).json({
         success: true,
         message: 'Device token registered successfully',
-        device
+        device,
       });
     } catch (error) {
       console.error('Error registering device token:', error);
       res.status(500).json({
         error: 'Failed to register device token',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   },
@@ -38,7 +38,7 @@ const deviceController = {
 
       if (!deviceToken) {
         return res.status(400).json({
-          error: 'Device token is required'
+          error: 'Device token is required',
         });
       }
 
@@ -47,16 +47,16 @@ const deviceController = {
 
       res.json({
         success: true,
-        message: 'Device token removed successfully'
+        message: 'Device token removed successfully',
       });
     } catch (error) {
       console.error('Error removing device token:', error);
       res.status(500).json({
         error: 'Failed to remove device token',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
-  }
+  },
 };
 
-module.exports = deviceController; 
+module.exports = deviceController;

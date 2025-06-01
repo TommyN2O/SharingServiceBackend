@@ -64,5 +64,5 @@ const isTasker = (req, res, next) => {
 
 module.exports = {
   authenticateToken,
-  isTasker
+  isTasker,
 };

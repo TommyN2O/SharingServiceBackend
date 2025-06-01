@@ -1,4 +1,5 @@
 const express = require('express');
+
 const router = express.Router();
 const { body } = require('express-validator');
 const reviewController = require('../controllers/reviewController');
@@ -8,7 +9,9 @@ const { authenticateToken } = require('../middleware/auth');
 const reviewValidation = [
   body('task_request_id').isInt().withMessage('Task request ID must be an integer'),
   body('rating').isInt({ min: 1, max: 5 }).withMessage('Rating must be between 1 and 5'),
-  body('review').isString().trim().optional().isLength({ max: 1000 }).withMessage('Review must not exceed 1000 characters')
+  body('review').isString().trim().optional()
+    .isLength({ max: 1000 })
+    .withMessage('Review must not exceed 1000 characters'),
 ];
 
 // Create a review for a completed task

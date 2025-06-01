@@ -15,7 +15,7 @@ async function updateStatus(req, res) {
       // Get current task status
       const currentStatusQuery = 'SELECT status FROM task_requests WHERE id = $1';
       const currentStatusResult = await client.query(currentStatusQuery, [id]);
-      
+
       if (!currentStatusResult.rows.length) {
         return res.status(404).json({ error: 'Task request not found' });
       }
@@ -53,5 +53,5 @@ async function updateStatus(req, res) {
 }
 
 module.exports = {
-  updateStatus
-}; 
+  updateStatus,
+};

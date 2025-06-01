@@ -4,7 +4,7 @@ const pool = require('../config/database');
 class OpenTaskController {
   constructor() {
     this.openTaskModel = new OpenTask();
-    
+
     // Bind methods to ensure correct 'this' context
     this.createOpenTask = this.createOpenTask.bind(this);
     this.getAllOpenTasks = this.getAllOpenTasks.bind(this);
@@ -22,7 +22,7 @@ class OpenTaskController {
   // Simple validation functions
   validateOpenTask(data) {
     const errors = [];
-    
+
     if (!data.description || data.description.trim().length < 10) {
       errors.push('Description must be at least 10 characters long');
     }
@@ -111,12 +111,12 @@ class OpenTaskController {
       try {
         // Handle the nested taskData structure
         if (req.body.taskData) {
-          taskData = typeof req.body.taskData === 'string' 
-            ? JSON.parse(req.body.taskData) 
+          taskData = typeof req.body.taskData === 'string'
+            ? JSON.parse(req.body.taskData)
             : req.body.taskData;
         } else {
-          taskData = typeof req.body === 'string' 
-            ? JSON.parse(req.body) 
+          taskData = typeof req.body === 'string'
+            ? JSON.parse(req.body)
             : req.body;
         }
         console.log('Parsed task data:', taskData);
@@ -132,9 +132,9 @@ class OpenTaskController {
       }
 
       // Transform availability array format
-      const dates = taskData.availability.map(slot => ({
+      const dates = taskData.availability.map((slot) => ({
         date: slot.date,
-        time: slot.time
+        time: slot.time,
       }));
       console.log('Transformed dates:', dates);
 
@@ -145,13 +145,13 @@ class OpenTaskController {
         location_id: taskData.location_id,
         category_id: taskData.category_id,
         creator_id: req.user.id,
-        dates
+        dates,
       };
       console.log('Final task data:', finalTaskData);
 
       // Handle photos
       if (req.files && req.files.length > 0) {
-        finalTaskData.photos = req.files.map(file => {
+        finalTaskData.photos = req.files.map((file) => {
           // Extract just the filename from the full path
           const filename = file.filename || file.path.split('\\').pop().split('/').pop();
           return `images/tasks/${filename}`;
@@ -164,9 +164,9 @@ class OpenTaskController {
       res.status(201).json(task);
     } catch (error) {
       console.error('Detailed error creating open task:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to create open task',
-        details: error.message 
+        details: error.message,
       });
     }
   }
@@ -177,17 +177,17 @@ class OpenTaskController {
       console.log('Getting all open tasks with filters:', req.query);
 
       // Parse city IDs into an array if provided
-      const cityIds = req.query.city ? req.query.city.split(',').map(id => parseInt(id)) : null;
+      const cityIds = req.query.city ? req.query.city.split(',').map((id) => parseInt(id)) : null;
 
       const filters = {
         category: req.query.category ? parseInt(req.query.category) : null,
-        cityIds: cityIds,
+        cityIds,
         date: req.query.date ? req.query.date : null,
         minBudget: req.query.minBudget ? parseInt(req.query.minBudget) : null,
         maxBudget: req.query.maxBudget ? parseInt(req.query.maxBudget) : null,
         duration: req.query.duration ? parseInt(req.query.duration) : null,
         excludeUserId: req.query.excludeUserId ? parseInt(req.query.excludeUserId) : null,
-        status: 'open'
+        status: 'open',
       };
 
       console.log('Normalized filters:', filters);
@@ -220,23 +220,25 @@ class OpenTaskController {
       const { taskId } = req.params;
       console.log('Full request body:', req.body);
       console.log('Request headers:', req.headers);
-      
-      const { description, price, availability, duration } = req.body;
+
+      const {
+        description, price, availability, duration,
+      } = req.body;
 
       console.log('Parsed data:', {
         description,
         price,
         availability,
-        duration
+        duration,
       });
 
       const errors = this.validateTaskOffer({
         description,
         price,
         duration,
-        availability
+        availability,
       });
-      
+
       if (errors.length > 0) {
         console.log('Validation errors:', errors);
         return res.status(400).json({ errors });
@@ -249,13 +251,13 @@ class OpenTaskController {
         hourly_rate: price,
         duration,
         preferred_date: availability.date,
-        preferred_time: availability.time
+        preferred_time: availability.time,
       };
 
       console.log('DB offer data:', dbOfferData);
 
       const offer = await this.openTaskModel.createOffer(dbOfferData);
-      
+
       // Format the response to match the Kotlin data class
       const formattedOffer = {
         id: offer.id,
@@ -265,9 +267,9 @@ class OpenTaskController {
         duration: offer.duration,
         availability: {
           date: offer.preferred_date,
-          time: offer.preferred_time
+          time: offer.preferred_time,
         },
-        status: offer.status
+        status: offer.status,
       };
 
       // Get task creator's ID and tasker's name
@@ -289,16 +291,16 @@ class OpenTaskController {
           id: taskId.toString(),
           title: '📋 Gautas naujas pasiūlymas',
           description: `${name} ${surname[0]}. pateikė pasiūlymą jūsų atvirai užklausai.`,
-          type: 'new_offer'
-        }
+          type: 'new_offer',
+        },
       );
 
       res.status(201).json(formattedOffer);
     } catch (error) {
       console.error('Error creating offer:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to create offer',
-        details: error.message 
+        details: error.message,
       });
     }
   }
@@ -319,7 +321,7 @@ class OpenTaskController {
   async getTasksByCategory(req, res) {
     try {
       const { categoryId } = req.params;
-      
+
       if (!categoryId || isNaN(categoryId)) {
         return res.status(400).json({ error: 'Valid category ID is required' });
       }
@@ -336,13 +338,13 @@ class OpenTaskController {
   async getOpenTaskDates(req, res) {
     try {
       const taskId = req.params.taskId;
-      
+
       if (!taskId) {
         return res.status(400).json({ error: 'Task ID is required' });
       }
 
       const task = await this.openTaskModel.getById(taskId);
-      
+
       if (!task) {
         return res.status(404).json({ error: 'Task not found' });
       }
@@ -359,7 +361,7 @@ class OpenTaskController {
   async getTaskOffers(req, res) {
     try {
       const { taskId } = req.params;
-      
+
       if (!taskId || isNaN(taskId)) {
         return res.status(400).json({ error: 'Valid task ID is required' });
       }
@@ -377,13 +379,13 @@ class OpenTaskController {
   async getOfferById(req, res) {
     try {
       const { offerId } = req.params;
-      
+
       if (!offerId || isNaN(offerId)) {
         return res.status(400).json({ error: 'Valid offer ID is required' });
       }
 
       const offer = await this.openTaskModel.getOfferById(offerId);
-      
+
       if (!offer) {
         return res.status(404).json({ error: 'Offer not found' });
       }
@@ -403,7 +405,7 @@ class OpenTaskController {
 
       // Check if task exists and user is the creator
       const task = await this.openTaskModel.getById(taskId);
-      
+
       if (!task) {
         return res.status(404).json({ error: 'Task not found' });
       }
@@ -414,7 +416,7 @@ class OpenTaskController {
 
       // Delete the task
       await this.openTaskModel.delete(taskId);
-      
+
       res.json({ message: 'Task deleted successfully' });
     } catch (error) {
       console.error('Error deleting open task:', error);
@@ -428,7 +430,7 @@ class OpenTaskController {
       const deletedCount = await this.openTaskModel.deleteExpiredDates();
       res.json({
         message: `Successfully deleted ${deletedCount} expired dates`,
-        deletedCount
+        deletedCount,
       });
     } catch (error) {
       console.error('Error deleting expired dates:', error);
@@ -437,4 +439,4 @@ class OpenTaskController {
   }
 }
 
-module.exports = OpenTaskController; 
+module.exports = OpenTaskController;

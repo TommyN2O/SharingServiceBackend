@@ -641,7 +641,7 @@ class TaskerProfile extends BaseModel {
       category: filters.category ? parseInt(filters.category) : undefined,
       minPrice: filters.minPrice !== null ? parseFloat(filters.minPrice) : undefined,
       maxPrice: filters.maxPrice !== null ? parseFloat(filters.maxPrice) : undefined,
-      excludeUserId: filters.excludeUserId // Add excludeUserId to normalized filters
+      excludeUserId: filters.excludeUserId, // Add excludeUserId to normalized filters
     };
 
     console.log('Original filters:', filters);

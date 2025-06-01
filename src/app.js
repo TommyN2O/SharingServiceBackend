@@ -96,19 +96,6 @@ async function initializeDatabase() {
     `);
     console.log('Tasker cities table initialized');
 
-    // Create customer_requests table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS customer_requests (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES users(id),
-        category_id INTEGER REFERENCES categories(id),
-        description TEXT,
-        status TEXT DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT NOW()
-      )
-    `);
-    console.log('Customer requests table initialized successfully');
-
     // Create tasker_categories table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS tasker_categories (
@@ -144,24 +131,11 @@ async function initializeDatabase() {
     `);
     console.log('Tasker gallery table initialized successfully');
 
-    // Create planned_tasks table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS planned_tasks (
-        id SERIAL PRIMARY KEY,
-        customer_id INTEGER REFERENCES users(id),
-        tasker_id INTEGER REFERENCES users(id),
-        category_id INTEGER REFERENCES categories(id),
-        status TEXT DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT NOW()
-      )
-    `);
-    console.log('Planned tasks table initialized successfully');
-
     // Create reviews table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS reviews (
         id SERIAL PRIMARY KEY,
-        planned_task_id INTEGER REFERENCES planned_tasks(id),
+        task_request_id INTEGER REFERENCES task_requests(id),
         tasker_id INTEGER REFERENCES users(id),
         rating INTEGER CHECK (rating >= 1 AND rating <= 5),
         comment TEXT,
@@ -169,17 +143,6 @@ async function initializeDatabase() {
       )
     `);
     console.log('Reviews table initialized successfully');
-
-    // Create saved_taskers table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS saved_taskers (
-        customer_id INTEGER REFERENCES users(id),
-        tasker_id INTEGER REFERENCES users(id),
-        created_at TIMESTAMP DEFAULT NOW(),
-        PRIMARY KEY (customer_id, tasker_id)
-      )
-    `);
-    console.log('Saved taskers table initialized successfully');
 
     // Create user_devices table
     await pool.query(`
