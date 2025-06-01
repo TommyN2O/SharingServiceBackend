@@ -14,7 +14,7 @@
     "no-underscore-dangle": "off",
     "camelcase": "off",
     "consistent-return": "off",
-    "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "no-unused-vars": "off",
     "no-restricted-syntax": "off",
     "no-await-in-loop": "off",
     "radix": "off",
@@ -24,7 +24,13 @@
     "class-methods-use-this": "off",
     "import/no-unresolved": "off",
     "default-case": "off",
-    "no-undef": ["error", { "typeof": true }],
-    "no-useless-catch": "off"
+    "no-undef": "off",
+    "no-useless-catch": "off",
+    "import/extensions": "off",
+    "global-require": "off",
+    "import/no-dynamic-require": "off",
+    "no-nested-ternary": "off",
+    "no-shadow": ["error", { "allow": ["FirebaseService"] }],
+    "no-plusplus": "off"
   }
 } 
