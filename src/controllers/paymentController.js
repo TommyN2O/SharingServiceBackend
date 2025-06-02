@@ -60,7 +60,7 @@ const paymentController = {
           // Deduct amount from wallet
           const newWalletAmount = walletAmount - amount;
           console.log('New wallet amount after deduction:', newWalletAmount);
-          
+
           await client.query(
             'UPDATE users SET wallet_amount = $1 WHERE id = $2',
             [newWalletAmount, req.user.id],

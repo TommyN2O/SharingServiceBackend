@@ -377,7 +377,7 @@ class Payment extends BaseModel {
       const currentWalletQuery = 'SELECT wallet_amount FROM users WHERE id = $1';
       const currentWalletResult = await client.query(currentWalletQuery, [senderPayment.user_id]);
       const currentWalletAmount = currentWalletResult.rows[0].wallet_amount;
-      
+
       console.log('Before refund - Current wallet amount:', currentWalletAmount);
       console.log('Original payment amount:', senderPayment.amount);
 

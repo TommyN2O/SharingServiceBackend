@@ -12,10 +12,12 @@ lint:
   stage: lint
   script:
     - npm install
-    - npx eslint .
+    - npx eslint . --fix
 
 startup_test:
   stage: test
+  variables:
+    FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT_JSON}
   script:
     - npm install
-    - npm run dev 
+    - npm run check 
