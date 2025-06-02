@@ -413,6 +413,9 @@ class OpenTask extends BaseModel {
         time: offer.offer_time,
       });
 
+      // Store the hourly rate before deleting the offer
+      const hourlyRate = offer.hourly_rate;
+
       // Update offer status
       await client.query(
         'UPDATE open_task_offers SET status = $1 WHERE id = $2',
@@ -427,15 +430,6 @@ class OpenTask extends BaseModel {
 
       // Delete the accepted offer
       await client.query('DELETE FROM open_task_offers WHERE id = $1', [offer.offer_id]);
-
-      // Get the exact hourly rate from the offer
-      const offerRateQuery = `
-        SELECT hourly_rate 
-        FROM open_task_offers 
-        WHERE id = $1
-      `;
-      const offerRateResult = await client.query(offerRateQuery, [offer.offer_id]);
-      const hourlyRate = offerRateResult.rows[0].hourly_rate;
 
       // Create task request using offer details
       const taskRequestQuery = `

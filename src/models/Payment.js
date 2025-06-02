@@ -282,13 +282,12 @@ class Payment extends BaseModel {
           AND (user_id = $2 OR user_id = $3)
         `, [taskRequestId, sender_id, tasker_id]);
 
-        // Add amount to tasker's wallet
-        const amountInCents = Math.round(taskerAmount * 100);
+        // Add amount to tasker's wallet (amount is already in euros)
         await client.query(`
           UPDATE users 
           SET wallet_amount = COALESCE(wallet_amount, 0) + $1 
           WHERE id = $2
-        `, [amountInCents, tasker_id]);
+        `, [taskerAmount, tasker_id]);
 
         // Get sender's name for notification
         const senderQuery = `
@@ -374,8 +373,18 @@ class Payment extends BaseModel {
       console.log('Sender payment:', senderPayment);
       console.log('Tasker payment:', taskerPayment);
 
-      // Convert amount to cents for wallet operations
-      const refundAmountInCents = Math.round(Math.abs(senderPayment.amount) * 100);
+      // Get current wallet amount for logging
+      const currentWalletQuery = 'SELECT wallet_amount FROM users WHERE id = $1';
+      const currentWalletResult = await client.query(currentWalletQuery, [senderPayment.user_id]);
+      const currentWalletAmount = currentWalletResult.rows[0].wallet_amount;
+      
+      console.log('Before refund - Current wallet amount:', currentWalletAmount);
+      console.log('Original payment amount:', senderPayment.amount);
+
+      // Amount is already in euros, no need to convert to cents
+      // Use absolute value since sender payment is stored as negative
+      const refundAmount = Math.abs(senderPayment.amount);
+      console.log('Refund amount to be added:', refundAmount);
 
       // Update sender's wallet with refund
       const updateWalletQuery = `
@@ -384,8 +393,8 @@ class Payment extends BaseModel {
         WHERE id = $2
         RETURNING wallet_amount
       `;
-      const walletResult = await client.query(updateWalletQuery, [refundAmountInCents, senderPayment.user_id]);
-      console.log('Updated sender wallet. New amount:', walletResult.rows[0].wallet_amount);
+      const walletResult = await client.query(updateWalletQuery, [refundAmount, senderPayment.user_id]);
+      console.log('After refund - New wallet amount:', walletResult.rows[0].wallet_amount);
 
       // Update payment statuses
       const updateSenderPaymentQuery = `

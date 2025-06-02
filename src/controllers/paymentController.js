@@ -45,8 +45,10 @@ const paymentController = {
           }
 
           const walletAmount = parseFloat(userResult.rows[0].wallet_amount) || 0;
+          console.log('Current wallet amount:', walletAmount);
+          console.log('Payment amount:', amount);
 
-          // Check if wallet has enough funds (using direct decimal comparison)
+          // Check if wallet has enough funds
           if (walletAmount < amount) {
             return res.status(400).json({
               error: 'Insufficient funds in wallet',
@@ -55,8 +57,10 @@ const paymentController = {
             });
           }
 
-          // Deduct amount from wallet (using direct decimal arithmetic)
+          // Deduct amount from wallet
           const newWalletAmount = walletAmount - amount;
+          console.log('New wallet amount after deduction:', newWalletAmount);
+          
           await client.query(
             'UPDATE users SET wallet_amount = $1 WHERE id = $2',
             [newWalletAmount, req.user.id],
@@ -66,7 +70,17 @@ const paymentController = {
           const taskerQuery = 'SELECT wallet_amount FROM users WHERE id = $1';
           const taskerResult = await client.query(taskerQuery, [taskRequest.tasker_id]);
           const taskerWalletAmount = parseFloat(taskerResult.rows[0].wallet_amount) || 0;
-          const newTaskerWalletAmount = taskerWalletAmount + amount;
+          console.log('Current tasker wallet amount:', taskerWalletAmount);
+
+          // Calculate service fee
+          const serviceFee = 2.50 * (taskRequest.duration || 1); // 2.50 EUR per hour
+          const taskerAmount = amount - serviceFee;
+          console.log('Service fee:', serviceFee);
+          console.log('Amount for tasker:', taskerAmount);
+
+          const newTaskerWalletAmount = taskerWalletAmount + taskerAmount;
+          console.log('New tasker wallet amount:', newTaskerWalletAmount);
+
           await client.query(
             'UPDATE users SET wallet_amount = $1 WHERE id = $2',
             [newTaskerWalletAmount, taskRequest.tasker_id],
